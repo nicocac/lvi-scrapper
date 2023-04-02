@@ -11,6 +11,6 @@
   "license": "ISC",
   "dependencies": {
     "mysql": "^2.18.1",
-    "puppeteer": "^16.2.0"
+    "puppeteer": "^19.8.2"
   }
 }
