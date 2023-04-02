@@ -134,10 +134,10 @@ const utils = require('./utils');
         }
         retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0 } : utils.getAccuracy(item))
 
-        if (!fs.existsSync(`./${utils.getDateString()}`)){
-            fs.mkdirSync(`./${utils.getDateString()}`);
+        if (!fs.existsSync(`./scrapping-src/${utils.getDateString()}`)){
+            fs.mkdirSync(`./scrapping-src/${utils.getDateString()}`);
         }
-        await fs.writeFile(`./${utils.getDateString()}/result-${neighborhood}.json`, JSON.stringify(retArray), function (err) {
+        await fs.writeFile(`./scrapping-src/${utils.getDateString()}/result-${neighborhood}.json`, JSON.stringify(retArray), function (err) {
             if (err) throw err;
             console.log('File is created successfully.');
             retArray = []
