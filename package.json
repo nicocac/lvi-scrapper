@@ -1,0 +1,16 @@
+{
+  "name": "puppeteer-try",
+  "version": "1.0.0",
+  "description": "puppeteer scrapping try",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Nicolas Estevez",
+  "license": "ISC",
+  "dependencies": {
+    "mysql": "^2.18.1",
+    "puppeteer": "^16.2.0"
+  }
+}
