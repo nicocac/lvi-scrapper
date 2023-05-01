@@ -3,27 +3,26 @@ const path = require("path");
 
 const updateDetails = async (inputItem, id, con) => {
     const sql = `UPDATE detail
-                     SET meters         = ${inputItem.details.mts},
-                         price          = ${inputItem.details.price},
-                         announcer_type = '${inputItem.details.announcerType}',
-                         updated_at     = '${inputItem.details.updated_at}',
-                         features       = '${inputItem.details.features}',
-                         finished       = ${inputItem.details?.finished ? 1 : 0},
-                         duplex         = ${inputItem.details.duplex},
-                         possession      = ${inputItem.details.possession},
-                         description    = '${inputItem.details.description}',
-                         owner          = ${inputItem.details.owner},
-                         north          = ${inputItem.details.north},
-                         location       = '${inputItem.details.location}',
-                         telephone      = '${inputItem.details.telephone}',
-                         mail           = '${inputItem.details.mail}'
-                     WHERE item_id = ${id}`;
+                 SET meters         = ${inputItem.details.mts},
+                     price          = ${inputItem.details.price},
+                     announcer_type = '${inputItem.details.announcerType}',
+                     updated_at     = '${inputItem.details.updated_at}',
+                     features       = '${inputItem.details.features}',
+                     finished       = ${inputItem.details?.finished ? 1 : 0},
+                     duplex         = ${inputItem.details.duplex},
+                     possession     = ${inputItem.details.possession},
+                     description    = '${inputItem.details.description}',
+                     owner          = ${inputItem.details.owner},
+                     north          = ${inputItem.details.north},
+                     location       = '${inputItem.details.neighborhood}',
+                     telephone      = '${inputItem.details.telephone}',
+                     mail           = '${inputItem.details.mail}'
+                 WHERE item_id = ${id}`;
     await con.query(sql, async function (err, result) {
         if (err) {
-            throw err;
+            console.log(`Error in the sentence: ${sql} - Error: ${err.message}`)
         }
-        const detailId = result.id;
-        if (detailId === 0) {
+        if (id === 0) {
             console.log(`Updating detailId 0 for link: ${inputItem.link}`)
             return true
         }
@@ -57,8 +56,9 @@ module.exports = {
     getFileName: function (folder, neighborhood) {
         return `./scrapping-src/${folder}/result-${neighborhood}.json`
     },
-    getFiles: async function (dirPath) {
+    getFiles: async function (dir) {
         return new Promise(async (resolve) => {
+            const dirPath = `./scrapping-src/${dir}`
             await fs.readdir(dirPath, (err, files) => {
                 if (err) {
                     console.error(`Error reading directory ${dirPath}: ${err}`);
@@ -140,6 +140,23 @@ module.exports = {
             }
             await updateDetails(inputItem, id, con)
         });
+    },
+    getProvince: async function () {
+        return getLocationData('_provincia')?.[0]
+    },
+    getCityAndNeighborhood: async function () {
+        const [city1, city2] = getLocationData('_ciudad')
+        return {
+            city: city2 ? city1 : undefined,
+            neighborhood: city2 ?? city1
+        }
+    },
+    getLocationData: async function (location) {
+        return Array.from(
+            document.querySelectorAll('.container.main-wrapper .bg-light-gray > div'))
+            ?.filter(e => e?.children[0]?.children[0]?.children[0]?.textContent?.indexOf(location) !== -1)
+            ?.map(e => e?.children[0]?.children[1]?.textContent?.trim()
+            )
     }
 }
 
