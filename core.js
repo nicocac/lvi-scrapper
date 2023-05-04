@@ -164,7 +164,7 @@ module.exports = {
         )
         let values = []
         for (let pageNumber = 1; pageNumber <= parseInt(totalPages); pageNumber++) {
-            if (pageNumber !== 1 ) await page.click('#ponchoTable_paginate ul li.paginate_button.active + li a')
+            if (pageNumber !== 1) await page.click('#ponchoTable_paginate ul li.paginate_button.active + li a')
             const data = await page.evaluate(async () => {
                 try {
                     return Array
@@ -181,7 +181,27 @@ module.exports = {
             values = [...values, ...data]
         }
 
-        await dataUtils.createGenericFile('province-data',values)
+        await dataUtils.createGenericFile('province-data', values)
+        await browser.close();
+    },
+    neighborhoodScrap: async function (inputSelector, inputText) {
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+        const url = `https://clasificados.lavoz.com.ar/inmuebles`
+        await Promise.all([
+            page.waitForNavigation(),
+            page.goto(url)
+        ])
+        await page.waitForSelector(inputSelector);
+        await page.focus(inputSelector);
+        await page.type(inputSelector, inputText);
+        await page.waitForSelector('#input-ubicacionautocomplete-list');
+        const data = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('#input-ubicacionautocomplete-list input[type="hidden"]'),
+                e => e.value.split(','))
+                .map(e => e[e.length - 1].trim()).filter(e => e.trim() !== 'Córdoba')
+        })
+        await dataUtils.createGenericFile('neighborhoods', data)
         await browser.close();
     }
 }
