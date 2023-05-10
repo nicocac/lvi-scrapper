@@ -98,7 +98,7 @@ module.exports = {
                         const [city1, city2] = await getLocationData('_ciudad', document)
                         const city = city2 ? city1 : undefined
                         const neighborhood = city2 ?? city1
-                        const province = await getLocationData('_provinicia', document)
+                        const province = await getLocationData('_provinicia', document)?.[0] ?? ''
                         return {
                             announcerType: document.querySelector('.container.main-wrapper > div + div > :nth-child(3) > div > div > div + div > div + div > div')?.innerText || (owner ? 'dueño' : 'no data'),
                             updated_at: [{array: document.querySelector('.border-top.border-bottom.border-silver > div > div')?.innerText.split(':')?.[1]?.trim().split('.')}]?.map(({array: updatedAt}) => new Date([updatedAt[1], updatedAt[0], updatedAt[2]]))[0].toJSON().slice(0, 19).replace('T', ' '),
@@ -112,7 +112,6 @@ module.exports = {
                             finished,
                             detailsTitle: title,
                             description,
-                            north: titlePlusDescription.indexOf('NORTE') !== -1 ? 1 : 0,
                             location: Array.from(document.querySelectorAll("p"))?.find(paragraph => paragraph.innerText === 'Ubicación')?.closest('div')?.children?.[1]?.innerText,
                             telephone,
                             mail
@@ -129,20 +128,21 @@ module.exports = {
                     ...item,
                     details: {
                         ...item.details,
-                        ...profileData[index]
+                        ...profileData[index],
+                        ...dataUtils.analyzeData(item.title.concat(item.details.description))
                     }
                 }
             })]
             // this checks if it has to save the accumulated data, if so, cleans the array
             if (this.hasToSave(pageNumber, groupingPages)) {
-                await dataUtils.createFile(id, page, retArray)
+                await dataUtils.createRealScrapFile(id, pageNumber, retArray)
                 retArray = []
                 saved = true
             }
         }
         if (!saved) {
             retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0} : utils.getAccuracy(item))
-            await dataUtils.createFile(id, page, retArray)
+            await dataUtils.createRealScrapFile(id, page, retArray)
         }
         await browser.close();
     },

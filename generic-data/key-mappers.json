@@ -1,0 +1,13 @@
+{
+  "frente": {
+    "norte": ["frente norte", "frente n", "orientacion norte"],
+    "sur": ["frente sur", "frente s", "orientacion sur"]
+  },
+  "fondo": {
+    "norte": ["fondo norte", "fondo n"],
+    "sur": ["fondo sur", "fondo s"]
+  },
+  "plaza": ["espacio verde", "plaza", "recreativo"],
+  "duplex": ["apto duplex"],
+  "posesion": ["posesion"]
+}

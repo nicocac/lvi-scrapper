@@ -151,12 +151,102 @@ module.exports = {
             neighborhood: city2 ?? city1
         }
     },
-    getLocationData: async function (location) {
-        return Array.from(
-            document.querySelectorAll('.container.main-wrapper .bg-light-gray > div'))
-            ?.filter(e => e?.children[0]?.children[0]?.children[0]?.textContent?.indexOf(location) !== -1)
-            ?.map(e => e?.children[0]?.children[1]?.textContent?.trim()
-            )
+    levenshteinDistance: async function (a, b) {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
+
+        const matrix = [];
+
+        // Initialize matrix with 0..m values for each row
+        for (let i = 0; i <= b.length; i++) {
+            matrix[i] = [i];
+        }
+
+        // Initialize matrix with 0..n values for each column
+        for (let j = 0; j <= a.length; j++) {
+            matrix[0][j] = j;
+        }
+
+        // Fill in matrix with Levenshtein distance values
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1, // substitution
+                        matrix[i][j - 1] + 1,   // insertion
+                        matrix[i - 1][j] + 1    // deletion
+                    );
+                }
+            }
+        }
+
+        return matrix[b.length][a.length];
+    },
+    findWordsByProximity: async function (text, targetPhrase, maxProximity) {
+        const words = text.toLowerCase().match(/\b\w+\b/g);
+        const targetWords = targetPhrase.toLowerCase().split(/\s+/);
+        const results = [];
+
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            const proximityPromises = await Promise.all(targetWords.map(async (target) => {
+                return await this.levenshteinDistance(word, target);
+            }));
+            const totalProximity = proximityPromises.reduce((acc, cur) => acc + cur, 0);
+            const averageProximity = totalProximity / proximityPromises.length;
+            if (averageProximity <= maxProximity) {
+                const composedWord = words.slice(i, i + targetWords.length).join(' ');
+                results.push({
+                    word: composedWord,
+                    index: i,
+                    proximity: averageProximity
+                });
+            }
+        }
+
+        return results;
+    },
+    createNGrams: async function (text, n) {
+        const nGrams = [];
+        for (let i = 0; i < text.length - n + 1; i++) {
+            nGrams.push(text.slice(i, i + n));
+        }
+        return nGrams;
+    },
+    findWordsByProximityNGrams: async function (text, targetPhrase, maxDistance) {
+        const textNGrams = await this.createNGrams(text.toLowerCase(), 3);
+        const targetNGrams = await this.createNGrams(targetPhrase.toLowerCase(), 3);
+
+        const nGramCounts = {};
+        textNGrams.forEach(nGram => {
+            if (nGramCounts[nGram]) {
+                nGramCounts[nGram]++;
+            } else {
+                nGramCounts[nGram] = 1;
+            }
+        });
+
+        let maxCount = 0;
+        let closestWord = null;
+        targetNGrams.forEach(nGram => {
+            if (nGramCounts[nGram]) {
+                if (nGramCounts[nGram] > maxCount) {
+                    maxCount = nGramCounts[nGram];
+                    closestWord = text.slice(textNGrams.indexOf(nGram) - 10, textNGrams.indexOf(nGram) + targetPhrase.length + 10);
+                }
+            }
+        });
+
+        if (maxCount >= targetNGrams.length - maxDistance) {
+            return closestWord;
+        } else {
+            return null;
+        }
+    },
+    removeAccents: async function (str) {
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     }
 }
 

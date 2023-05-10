@@ -1,6 +1,7 @@
 const mysql = require('mysql');
 const utils = require('./utils')
 const fs = require("fs");
+const KEY_MAPPERS = require('./generic-data/key-mappers.json')
 const connection = null
 module.exports = {
     getConnection: async function () {
@@ -35,6 +36,22 @@ module.exports = {
     persistDataArray: async function (dataArray) {
         await this.persist(dataArray, this.getConnection())
     },
+    analyzeData: async function (description) {
+        const frenteNorte = KEY_MAPPERS['frente']['norte'].some(key => description.indexOf(key) !== -1)
+        const frenteSur = KEY_MAPPERS['frente']['sur'].some(key => description.indexOf(key) !== -1)
+        const fondoNorte = KEY_MAPPERS['fondo']['norte'].some(key => description.indexOf(key) !== -1)
+        const fondoSur = KEY_MAPPERS['fondo']['sur'].some(key => description.indexOf(key) !== -1)
+        const plaza = KEY_MAPPERS['plaza'].some(key => description.indexOf(key) !== -1)
+        const duplex = KEY_MAPPERS['duplex'].some(key => description.indexOf(key) !== -1)
+        const possession = KEY_MAPPERS['posesion'].some(key => description.indexOf(key) !== -1)
+        return {
+            frente: frenteNorte ? 'norte' : (frenteSur ? 'sur' : ''),
+            fondo: fondoNorte ? 'norte' : (fondoSur ? 'sur' : ''),
+            espacioVerde: plaza || '',
+            duplex: duplex || '',
+            possession: possession || ''
+        }
+    },
     getScrappingMainFolder: async function (scrappingId) {
         const scrappingFolder = `./${scrappingId}-${utils.getDateString()}`
         if (!fs.existsSync(`./scrapping-src/${scrappingFolder}`)) {
@@ -42,14 +59,14 @@ module.exports = {
         }
         return `./scrapping-src/${scrappingFolder}`
     },
-    createFile: async function(scrappingId, currentPage, dataArray) {
+    createRealScrapFile: async function (scrappingId, currentPage, dataArray) {
         const mainFolder = await this.getScrappingMainFolder(scrappingId)
         await fs.writeFile(`${mainFolder}/page-${currentPage}.json`, JSON.stringify(dataArray), function (err) {
             if (err) throw err;
             console.log('File was created successfully.');
         })
     },
-    createGenericFile: async function(fileName, dataArray) {
+    createGenericFile: async function (fileName, dataArray) {
         const mainFolder = './generic-data'
         await fs.writeFile(`${mainFolder}/${fileName}.json`, JSON.stringify(dataArray), function (err) {
             if (err) throw err;
