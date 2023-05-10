@@ -41,15 +41,17 @@ module.exports = {
         const frenteSur = KEY_MAPPERS['frente']['sur'].some(key => description.indexOf(key) !== -1)
         const fondoNorte = KEY_MAPPERS['fondo']['norte'].some(key => description.indexOf(key) !== -1)
         const fondoSur = KEY_MAPPERS['fondo']['sur'].some(key => description.indexOf(key) !== -1)
-        const plaza = KEY_MAPPERS['plaza'].some(key => description.indexOf(key) !== -1)
+        const espacioVerde = KEY_MAPPERS['plaza'].some(key => description.indexOf(key) !== -1)
         const duplex = KEY_MAPPERS['duplex'].some(key => description.indexOf(key) !== -1)
         const possession = KEY_MAPPERS['posesion'].some(key => description.indexOf(key) !== -1)
+        const escritura = KEY_MAPPERS['escritura'].some(key => description.indexOf(key) !== -1)
         return {
             frente: frenteNorte ? 'norte' : (frenteSur ? 'sur' : ''),
             fondo: fondoNorte ? 'norte' : (fondoSur ? 'sur' : ''),
-            espacioVerde: plaza || '',
-            duplex: duplex || '',
-            possession: possession || ''
+            espacioVerde,
+            duplex,
+            possession,
+            escritura
         }
     },
     getScrappingMainFolder: async function (scrappingId) {

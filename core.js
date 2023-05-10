@@ -93,7 +93,7 @@ module.exports = {
                         const telephone = document.querySelector('#tel > span > span')?.innerText;
                         const mail = document.querySelector('#mail > a')?.innerText;
                         const owner = description?.indexOf('DUEÑO') !== -1 ? 1 : 0
-                        const finished = !!document.querySelector('#camera h2')?.innerText
+                        const finished = document.querySelector('#camera .h2')?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1
                         const titlePlusDescription = `${title} ${description}`
                         const [city1, city2] = await getLocationData('_ciudad', document)
                         const city = city2 ? city1 : undefined
@@ -123,16 +123,18 @@ module.exports = {
                 }
             }
             console.log(`Flatting data`)
-            retArray = [...retArray, ...filteredData.map((item, index) => {
+            retArray = await Promise.all([...retArray, ...filteredData.map(async (item, index) => {
+                const completeData = await utils.removeAccents(item.title.concat(item.details.description).toLowerCase())
+                const analyzedData = await dataUtils.analyzeData(completeData)
                 return {
                     ...item,
                     details: {
                         ...item.details,
                         ...profileData[index],
-                        ...dataUtils.analyzeData(item.title.concat(item.details.description))
+                        ...analyzedData
                     }
                 }
-            })]
+            })])
             // this checks if it has to save the accumulated data, if so, cleans the array
             if (this.hasToSave(pageNumber, groupingPages)) {
                 await dataUtils.createRealScrapFile(id, pageNumber, retArray)
