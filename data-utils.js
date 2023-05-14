@@ -45,13 +45,17 @@ module.exports = {
         const duplex = KEY_MAPPERS['duplex'].some(key => description.indexOf(key) !== -1)
         const possession = KEY_MAPPERS['posesion'].some(key => description.indexOf(key) !== -1)
         const escritura = KEY_MAPPERS['escritura'].some(key => description.indexOf(key) !== -1)
+        const central = KEY_MAPPERS['central'].some(key => description.indexOf(key) !== -1)
+        const periferico = KEY_MAPPERS['periferico'].some(key => description.indexOf(key) !== -1)
         return {
             frente: frenteNorte ? 'norte' : (frenteSur ? 'sur' : ''),
             fondo: fondoNorte ? 'norte' : (fondoSur ? 'sur' : ''),
             espacioVerde,
             duplex,
             possession,
-            escritura
+            escritura,
+            central,
+            periferico
         }
     },
     getScrappingMainFolder: async function (scrappingId) {

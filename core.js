@@ -2,7 +2,7 @@ const puppeteer = require("puppeteer");
 const utils = require("./utils");
 const dataUtils = require("./data-utils");
 module.exports = {
-    realScrap: async function (url, id, groupingPages) {
+    realScrap: async function (url, id, groupingPages, test = false) {
         const browser = await puppeteer.launch();
         const page = await browser.newPage();
         let saved = false;
@@ -20,7 +20,7 @@ module.exports = {
         )
 
         for (let pageNumber = 1; pageNumber <= parseInt(pages); pageNumber++) {
-            if (saved) break;
+            if (saved && test) break;
             saved = false;
             await Promise.all([
                 page.waitForNavigation(),
@@ -93,7 +93,8 @@ module.exports = {
                         const telephone = document.querySelector('#tel > span > span')?.innerText;
                         const mail = document.querySelector('#mail > a')?.innerText;
                         const owner = description?.indexOf('DUEÑO') !== -1 ? 1 : 0
-                        const finished = document.querySelector('#camera .h2')?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1
+                        const finished = document.querySelector('#camera .h2')?.innerText &&
+                            document.querySelector('#camera .h2')?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1
                         const titlePlusDescription = `${title} ${description}`
                         const [city1, city2] = await getLocationData('_ciudad', document)
                         const city = city2 ? city1 : undefined
@@ -131,6 +132,7 @@ module.exports = {
                     details: {
                         ...item.details,
                         ...profileData[index],
+                        // it analyzes data to infer some features
                         ...analyzedData
                     }
                 }
@@ -151,6 +153,7 @@ module.exports = {
     hasToSave: function (page, groupingPages) {
         return page % groupingPages === 0
     },
+    // this scrapper gets all the locations by province that are registered in argentina.gob.ar
     locationScrap: async function (province) {
         const browser = await puppeteer.launch();
         const page = await browser.newPage();
@@ -186,6 +189,7 @@ module.exports = {
         await dataUtils.createGenericFile('province-data', values)
         await browser.close();
     },
+    // this scrapper gets all the neighborhoods that are defined in la voz del interior
     neighborhoodScrap: async function (inputSelector, inputText) {
         const browser = await puppeteer.launch();
         const page = await browser.newPage();

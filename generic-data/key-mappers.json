@@ -7,8 +7,10 @@
     "norte": ["fondo norte", "fondo n"],
     "sur": ["fondo sur", "fondo s"]
   },
-  "plaza": ["espacio verde", "plaza", "recreativo"],
+  "plaza": ["espacio verde", "plaza", "recreativo", "pulmon"],
   "duplex": ["apto duplex", "apto ph"],
   "posesion": ["posesion"],
-  "escritura": ["escritura"]
+  "escritura": ["escritura"],
+  "central": ["lote central", "corazon"],
+  "periferico": ["periferico", "colindante"]
 }
