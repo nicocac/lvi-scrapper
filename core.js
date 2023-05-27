@@ -4,7 +4,7 @@ const dataUtils = require("./data-utils");
 const proxyChain = require('proxy-chain');
 module.exports = {
     realScrap: async function (url, id, groupingPages, test = false) {
-        const oldProxyUrl = 'http://api.scrapfly.io/scrape?key=scp-live-b1e846906a064b4ebea55b5d2c856821&url=https%3A%2F%2Ftools.scrapfly.io%2Fapi%2Finfo%2Fip&country=ar';
+        const oldProxyUrl = 'https://api.scrapfly.io/scrape?key=scp-live-b1e846906a064b4ebea55b5d2c856821&url=https%3A%2F%2Fhttpbin.dev%2Fanything&country=ar';
         const newProxyUrl = await proxyChain.anonymizeProxy({url: oldProxyUrl});
         const browser = await puppeteer.launch({
             ignoreHTTPSErrors: true,
