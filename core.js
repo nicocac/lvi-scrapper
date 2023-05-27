@@ -1,124 +1,158 @@
 const puppeteer = require("puppeteer");
 const utils = require("./utils");
 const dataUtils = require("./data-utils");
+const proxyChain = require('proxy-chain');
 module.exports = {
     realScrap: async function (url, id, groupingPages, test = false) {
-        const browser = await puppeteer.launch();
+        const oldProxyUrl = 'http://api.scrapfly.io/scrape?key=scp-live-b1e846906a064b4ebea55b5d2c856821&url=https%3A%2F%2Ftools.scrapfly.io%2Fapi%2Finfo%2Fip&country=ar';
+        const newProxyUrl = await proxyChain.anonymizeProxy({url: oldProxyUrl});
+        const browser = await puppeteer.launch({
+            ignoreHTTPSErrors: true,
+            args: [
+                `--proxy-server=${newProxyUrl}`,
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu'
+            ]
+        });
         const page = await browser.newPage();
         let saved = false;
         let retArray = []
 
-        await Promise.all([
-            page.waitForNavigation(),
-            page.goto(`${url}`)
-        ])
+        await page.goto(`${url}`)
 
-        const pages = await page.evaluate(async () => {
-                const pages = Array.from(document.querySelectorAll('nav ul li'));
-                return pages ? (pages.length < 11 ? pages.length : pages[pages.length - 1].children[0].innerText) : 1
-            }
-        )
+        const pages = await page.$$eval('nav ul li', (pages) => pages ? (pages.length < 11 ? pages.length : pages[pages.length - 1].children[0].innerText) : 1)
 
-        for (let pageNumber = 1; pageNumber <= parseInt(pages); pageNumber++) {
+        let pageNumber = await dataUtils.recapPageNum(id, groupingPages);
+
+        for (pageNumber; pageNumber <= parseInt(pages); pageNumber++) {
+
             if (saved && test) break;
             saved = false;
             await Promise.all([
-                page.waitForNavigation(),
-                page.goto(`${url}?page=${pageNumber}`)
-            ])
+                page.goto(`${url}?page=${pageNumber}`),
+                page.waitForSelector('.safari-card')
+            ]);
+            await page.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
+            await page.mouse.click(0, 0); // click on a specific point
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
-            let data = await page.evaluate(async () => {
-                const selectors = {
-                    cardSelector: '.safari-card',
-                    link: 'a',
-                    title: 'a h2',
-                    mts: 'a .card-body > div:nth-last-child(-n + 2)',
-                    price: 'a .card-body > div:last-child'
-                }
-                try {
-                    const anchors = Array
-                        .from(document.querySelectorAll(selectors.cardSelector), element => element.querySelector(selectors.link).getAttribute('href'))
-                    const titles = Array
-                        .from(document.querySelectorAll(selectors.cardSelector), element => element.querySelector(selectors.title)?.innerText)
-                    const mts = Array
-                        .from(document.querySelectorAll(selectors.cardSelector), element => element.querySelector(selectors.mts)?.innerText.split('\n')?.[0])
-                    const prices = Array
-                        .from(document.querySelectorAll(selectors.cardSelector), element => element.querySelector(selectors.price)?.innerText.replace('.', '').split('U$S')?.[1]?.trim())
-                    return anchors.map((data, index) => {
-                        return {
-                            link: data,
-                            title: titles[index],
-                            details: {
-                                mts: mts[index] || 0,
-                                price: prices[index] || 0
-                            }
+            const selectors = {
+                cardSelector: 'div.content-start > div',
+                link: 'a',
+                title: 'a h2',
+                mts: 'a .card-body > div:nth-last-child(-n + 2)',
+                price: 'a .card-body > div:last-child'
+            }
+
+            const data = await page.$$eval(selectors.cardSelector, (list, selectors) => {
+                const getPrice = (innerText) => {
+                    const types = [
+                        {
+                            symbol: 'U$S',
+                            name: 'dollar'
+                        },
+                        {
+                            symbol: '$',
+                            name: 'peso'
                         }
-                    })
-                } catch (e) {
-                    console.log(`Error Processing page ${pageNumber} of ${pages} for neighborhood ${neighborhood}: ${e.message}`)
+                    ]
+                    const coin = types.find(e => innerText.indexOf(e.symbol) !== -1)
+                    if (!coin) return null
+                    return {
+                        type: coin.name,
+                        amount: innerText.replaceAll('.', '').split(coin.symbol)?.[1]?.trim()
+                    }
                 }
-            });
-            const filteredData = data.filter(item => item.details.price && item.details.mts)
+                return list.map((element) => {
+                    return {
+                        link: element.querySelector(selectors.link).getAttribute('href'),
+                        title: element.querySelector(selectors.title)?.innerText,
+                        details: {
+                            meters: element.querySelector(selectors.mts)?.innerText.split('\n')?.[0],
+                            price: getPrice(element.querySelector(selectors.price)?.innerText),
+                        }
+                    }
+                })
+            }, selectors)
+
+            const filteredData = data.filter(item => item.details?.price?.amount && item.details?.meters)
+
             const profileData = []
             for (const i of filteredData) {
+                // add timeout random between 1 and 5 seconds for each profile
+                await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5000)));
                 try {
                     await Promise.all([
-                        page.waitForNavigation(),
-                        page.goto(i.link)
+                        page.goto(i.link),
+                        page.waitForSelector('div.justify-between')
                     ])
-                    const announcerData = await page.evaluate(async () => {
-                        const getLocationData = async function (location) {
-                            return Array.from(
-                                document.querySelectorAll('.container.main-wrapper .bg-light-gray > div'))
-                                ?.filter(e => e?.children[0]?.children[0]?.children[0]?.textContent?.indexOf(location) !== -1)
-                                ?.map(e => e?.children[0]?.children[1]?.textContent?.trim()
-                                )
-                        }
-                        const getHtmlElementArray = (selector, title) => {
-                            let allResults = Array.from(document.querySelectorAll(selector))?.find(paragraph => paragraph.innerText === title)?.closest('div')?.children
-                            if (allResults) {
-                                const [excluded, ...results] = allResults
-                                return results
-                            }
-                            return []
-                        }
-                        const features = getHtmlElementArray("p", "Características")
-                        const otherFeatures = getHtmlElementArray("p", "Otras características")
-                        let description = Array.from(document.querySelectorAll("p"))?.find(paragraph => paragraph?.innerText === 'Descripción')?.closest('div')?.innerText.toUpperCase()
-                        const title = document.querySelector('.main-wrapper h1')?.innerText;
-                        const telButton = document.querySelector('#ver-tel');
-                        const mailButton = document.querySelector('#ver-mail');
-                        telButton?.click();
-                        mailButton?.click();
-                        const telephone = document.querySelector('#tel > span > span')?.innerText;
-                        const mail = document.querySelector('#mail > a')?.innerText;
-                        const owner = description?.indexOf('DUEÑO') !== -1 ? 1 : 0
-                        const finished = document.querySelector('#camera .h2')?.innerText &&
-                            document.querySelector('#camera .h2')?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1
-                        const titlePlusDescription = `${title} ${description}`
-                        const [city1, city2] = await getLocationData('_ciudad', document)
-                        const city = city2 ? city1 : undefined
-                        const neighborhood = city2 ?? city1
-                        const province = await getLocationData('_provinicia', document)?.[0] ?? ''
+                    await page.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
+                    await page.mouse.click(10000, 10000); // click on a specific point
+                    const featureDescription = await page.$$eval('p', (results) => {
+                        const asArray = Array.from(results)
+                        const [, ...features] = asArray?.find(e => e.innerText === "Características").closest('div')?.children
+                        const [, ...otherFeatures] = asArray?.find(e => e.innerText === "Otras características").closest('div')?.children
+                        const description = asArray?.find(paragraph => paragraph?.innerText === 'Descripción')?.closest('div')?.innerText.toUpperCase()
                         return {
-                            announcerType: document.querySelector('.container.main-wrapper > div + div > :nth-child(3) > div > div > div + div > div + div > div')?.innerText || (owner ? 'dueño' : 'no data'),
-                            updated_at: [{array: document.querySelector('.border-top.border-bottom.border-silver > div > div')?.innerText.split(':')?.[1]?.trim().split('.')}]?.map(({array: updatedAt}) => new Date([updatedAt[1], updatedAt[0], updatedAt[2]]))[0].toJSON().slice(0, 19).replace('T', ' '),
-                            features: [...features, ...otherFeatures]?.map(feature => feature?.innerText.replace('\\n', '').trim())?.join(','),
-                            duplex: titlePlusDescription?.indexOf('APTO DUPLEX') !== -1 ? 1 : 0,
-                            possession: titlePlusDescription?.indexOf('POSESION') !== -1 ? 1 : 0,
-                            owner,
-                            city,
-                            province,
-                            neighborhood,
-                            finished,
-                            detailsTitle: title,
-                            description,
-                            location: Array.from(document.querySelectorAll("p"))?.find(paragraph => paragraph.innerText === 'Ubicación')?.closest('div')?.children?.[1]?.innerText,
-                            telephone,
-                            mail
+                            features: [...features, ...otherFeatures]
+                                ?.map(feature => feature?.innerText.replace('\\n', '').trim())
+                                ?.join(','),
+                            description
                         }
                     })
-                    profileData.push(announcerData)
+                    const getLocationDOMData = async (locationInput) =>
+                        await page.$$eval('.container.main-wrapper .bg-light-gray > div', (results, locationInput) => {
+                            return results
+                                ?.filter(e => e?.children[0]?.children[0]?.children[0]?.textContent?.indexOf(locationInput) !== -1)
+                                ?.map(e => e?.children[0]?.children[1]?.textContent?.trim()
+                                )
+                        }, locationInput)
+                    const getLocationData = async () => {
+                        let [city, neighborhood] = await getLocationDOMData('_ciudad')
+                        if (!neighborhood) {
+                            city = undefined
+                            neighborhood = city
+                        }
+                        const province = (await getLocationDOMData('_provinicia'))?.[0] ?? ''
+                        return {
+                            neighborhood,
+                            city,
+                            province
+                        }
+                    }
+                    const locationData = await getLocationData()
+                    const getContactData = async (selector, clickedSelector) => {
+                        try {
+                            await page.waitForSelector(selector)
+                            await page.click(selector)
+                            return await page.$eval(clickedSelector, telButton => telButton?.innerText || 'no data')
+                        } catch (e) {
+                            return 'no data'
+                        }
+                    }
+                    const phoneNumber = await getContactData('#ver-tel', '#tel > span > span')
+                    const mail = await getContactData('#ver-mail', '#mail > a')
+                    let finished = false
+                    try {
+                        finished = await page.$eval('#camera .h2', result => result?.innerText && result?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1)
+                    } catch (e) {
+                        // throw element not found
+                    }
+                    const announcerType = await page.$eval('.clearfix .container.px2 div.h5.gray', result => {
+                        if (result?.innerText) {
+                            return 'inmobiliaria'
+                        }
+                        return 'no data'
+                    })
+                    profileData.push({
+                        ...featureDescription,
+                        ...locationData,
+                        phoneNumber,
+                        mail,
+                        finished,
+                        announcerType
+                    })
                 } catch (e) {
                     console.error(`Processing link ${i.link}: ${e.message}`)
                 }
@@ -146,8 +180,10 @@ module.exports = {
         }
         if (!saved) {
             retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0} : utils.getAccuracy(item))
-            await dataUtils.createRealScrapFile(id, page, retArray)
+            await dataUtils.createRealScrapFile(id, pages, retArray)
         }
+        // Clean up
+        await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
         await browser.close();
     },
     hasToSave: function (page, groupingPages) {

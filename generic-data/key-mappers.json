@@ -12,5 +12,7 @@
   "posesion": ["posesion"],
   "escritura": ["escritura"],
   "central": ["lote central", "corazon"],
-  "periferico": ["periferico", "colindante"]
+  "perimetral": ["perimetral", "colindante"],
+  "financia": ["financiado", "financia", "financiamiento"],
+  "propietario": ["dueño", "propiertario"]
 }

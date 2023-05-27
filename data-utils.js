@@ -12,8 +12,12 @@ module.exports = {
             database: "inmoscrap"
         });
     },
+    recapPageNum: async function (scrapperId, groupingPages) {
+        const files = await utils.getFiles(await this.getScrappingMainFolder(scrapperId))
+        return (files.length * groupingPages) + 1 || 1
+    },
     persist: async function (scrapperId, connection) {
-        const files = await utils.getFiles(this.getScrappingMainFolder(scrapperId))
+        const files = await utils.getFiles(await this.getScrappingMainFolder(scrapperId))
         await connection.connect(async function (err) {
             if (err) throw err;
             for (let array of files) {
@@ -46,7 +50,9 @@ module.exports = {
         const possession = KEY_MAPPERS['posesion'].some(key => description.indexOf(key) !== -1)
         const escritura = KEY_MAPPERS['escritura'].some(key => description.indexOf(key) !== -1)
         const central = KEY_MAPPERS['central'].some(key => description.indexOf(key) !== -1)
-        const periferico = KEY_MAPPERS['periferico'].some(key => description.indexOf(key) !== -1)
+        const periferico = KEY_MAPPERS['perimetral'].some(key => description.indexOf(key) !== -1)
+        const financia = KEY_MAPPERS['financia'].some(key => description.indexOf(key) !== -1)
+        const propietario = KEY_MAPPERS['propietario'].some(key => description.indexOf(key) !== -1)
         return {
             frente: frenteNorte ? 'norte' : (frenteSur ? 'sur' : ''),
             fondo: fondoNorte ? 'norte' : (fondoSur ? 'sur' : ''),
@@ -55,7 +61,9 @@ module.exports = {
             possession,
             escritura,
             central,
-            periferico
+            periferico,
+            financia,
+            propietario
         }
     },
     getScrappingMainFolder: async function (scrappingId) {

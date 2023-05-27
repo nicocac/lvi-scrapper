@@ -12,5 +12,8 @@
   "dependencies": {
     "mysql": "^2.18.1",
     "puppeteer": "^19.8.2"
+  },
+  "devDependencies": {
+    "proxy-chain": "^2.3.0"
   }
 }

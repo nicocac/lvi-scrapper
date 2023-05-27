@@ -1,5 +1,6 @@
 const core = require('./core');
 const utils = require('./utils');
+const dataUtils = require('./data-utils');
 
 (async () => {
      console.time("Scrapper");

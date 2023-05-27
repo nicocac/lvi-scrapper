@@ -58,15 +58,14 @@ module.exports = {
     },
     getFiles: async function (dir) {
         return new Promise(async (resolve) => {
-            const dirPath = `./scrapping-src/${dir}`
-            await fs.readdir(dirPath, (err, files) => {
+            fs.readdir(dir, (err, files) => {
                 if (err) {
-                    console.error(`Error reading directory ${dirPath}: ${err}`);
+                    console.error(`Error reading directory ${dir}: ${err}`);
                     return;
                 }
 
                 resolve(files.map(file => {
-                    const filePath = path.join(dirPath, file);
+                    const filePath = path.join(dir, file);
                     return require('./' + filePath)
                 }))
             });
