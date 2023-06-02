@@ -2,10 +2,12 @@ const puppeteer = require("puppeteer");
 const utils = require("./utils");
 const dataUtils = require("./data-utils");
 const proxyChain = require('proxy-chain');
+const {parse} = require('node-html-parser')
 module.exports = {
     realScrap: async function (url, id, groupingPages, test = false) {
-        const oldProxyUrl = 'https://api.scrapfly.io/scrape?key=scp-live-b1e846906a064b4ebea55b5d2c856821&url=https%3A%2F%2Fhttpbin.dev%2Fanything&country=ar';
-        const newProxyUrl = await proxyChain.anonymizeProxy({url: oldProxyUrl});
+        // const proxyUrl = 'http://localhost:8000';
+        const oldProxyUrl = 'http://45.6.4.60:8081';
+        const newProxyUrl = await proxyChain.anonymizeProxy(oldProxyUrl);
         const browser = await puppeteer.launch({
             ignoreHTTPSErrors: true,
             args: [
@@ -17,10 +19,23 @@ module.exports = {
             ]
         });
         const page = await browser.newPage();
+
+        // signal to the intermediate proxy server what upstream proxy we want to use
+        /* await page.setExtraHTTPHeaders({
+            prueba: 'quisio',
+            'x-no-forward-upstream-proxy': 'https://api.scrapfly.io/scrape?key=scp-live-b1e846906a064b4ebea55b5d2c856821&url=https%3A%2F%2Fhttpbin.dev%2Fanything&country=ar'
+        }); */
+
         let saved = false;
         let retArray = []
 
-        await page.goto(`${url}`)
+        try {
+            await page.goto(`${url}`)
+        } catch (e) {
+            setTimeout(async () => {
+                await page.goto(`${url}`)
+            }, 1.08e+7)
+        }
 
         const pages = await page.$$eval('nav ul li', (pages) => pages ? (pages.length < 11 ? pages.length : pages[pages.length - 1].children[0].innerText) : 1)
 
@@ -30,10 +45,8 @@ module.exports = {
 
             if (saved && test) break;
             saved = false;
-            await Promise.all([
-                page.goto(`${url}?page=${pageNumber}`),
-                page.waitForSelector('.safari-card')
-            ]);
+            await page.goto(`${url}?page=${pageNumber}`)
+            await page.waitForSelector('.safari-card')
             await page.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
             await page.mouse.click(0, 0); // click on a specific point
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
@@ -83,10 +96,8 @@ module.exports = {
                 // add timeout random between 1 and 5 seconds for each profile
                 await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5000)));
                 try {
-                    await Promise.all([
-                        page.goto(i.link),
-                        page.waitForSelector('div.justify-between')
-                    ])
+                    await page.goto(i.link)
+                    await page.waitForSelector('div.justify-between')
                     await page.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
                     await page.mouse.click(10000, 10000); // click on a specific point
                     const featureDescription = await page.$$eval('p', (results) => {
@@ -178,17 +189,102 @@ module.exports = {
                 saved = true
             }
         }
-        if (!saved) {
+        if (!saved && pages !== 0) {
             retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0} : utils.getAccuracy(item))
             await dataUtils.createRealScrapFile(id, pages, retArray)
         }
+        if (pages === 0) {
+            console.log('Scraper finished without results')
+        }
         // Clean up
-        await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
         await browser.close();
+        await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
+    },
+    realScrapApi: async function (url, id, groupingPages, test = false) {
+        let rootHtml
+        try {
+            rootHtml = await dataUtils.getGenericData('./generic-data/scrappingApi')
+        } catch (e) {
+        }
+
+        if (!rootHtml) {
+            rootHtml = await utils.getHtmlText(url)
+            await dataUtils.createGenericFile('scrappingApi', html, 'text')
+        }
+
+        const selectors = {
+            pages: 'nav ul li',
+            card: 'div.content-start > div',
+            link: 'a',
+            title: 'a h2',
+            mts: 'a .card-body > div:nth-last-child(2)',
+            price: 'a .card-body > div:last-child'
+        }
+
+        const dom = parse(rootHtml);
+        const pageArray = Array.from(dom.querySelectorAll(selectors.pages))
+        let pages = pageArray
+            ? (pageArray.length < 11
+                ? pageArray.length
+                : parseInt(pageArray[pageArray.length - 1].textContent))
+            : 1
+        let pageNumber = await dataUtils.recapPageNum(id, groupingPages);
+        for (pageNumber; pageNumber <= pages; pageNumber++) {
+            if (pageNumber > 1) {
+                rootHtml = await utils.getHtmlText(`${url}?page=${pageNumber}`)
+            }
+            const cards = dom.querySelectorAll(selectors.card)
+
+            const data = []
+
+            for (const element of cards) {
+                let detailHtml = ''
+                const mts = element.querySelector(selectors.mts).textContent
+                const title = element.querySelector(selectors.title).textContent
+                const price = await dataUtils.getPrice(element.querySelector(selectors.price).textContent)
+                const link = element.querySelector(selectors.link).getAttribute('href')
+                try {
+                    detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
+                } catch (e) {
+                }
+
+                if (!detailHtml) {
+                    detailHtml = await utils.getHtmlText(link)
+                    await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
+                }
+
+                const detailDom = parse(detailHtml);
+
+                data.push({
+                    link,
+                    title,
+                    details: {
+                        meters: mts?.split('\n')?.[0],
+                        price,
+                        ...(await this._getFeatureDescription(detailDom, 'p'))
+                    }
+                })
+            }
+            console.log(data)
+        }
+    },
+    _getFeatureDescription: async function (document, selector) {
+        const asArray = Array.from(document.querySelectorAll(selector))
+        const [, ...features] = asArray?.find(e => e.textContent === "Características").closest('div')?.childNodes
+        const [, ...otherFeatures] = asArray?.find(e => e.textContent === "Otras características").closest('div')?.childNodes
+        const description = asArray?.find(paragraph => paragraph.textContent === 'Descripción')?.closest('div').textContent
+        const result = {
+            features: [...features, ...otherFeatures]
+                ?.map(feature => feature.textContent?.replace('\\n', '').trim())
+                ?.join(','),
+            description
+        }
+        return result
     },
     hasToSave: function (page, groupingPages) {
         return page % groupingPages === 0
-    },
+    }
+    ,
     // this scrapper gets all the locations by province that are registered in argentina.gob.ar
     locationScrap: async function (province) {
         const browser = await puppeteer.launch();
@@ -224,7 +320,8 @@ module.exports = {
 
         await dataUtils.createGenericFile('province-data', values)
         await browser.close();
-    },
+    }
+    ,
     // this scrapper gets all the neighborhoods that are defined in la voz del interior
     neighborhoodScrap: async function (inputSelector, inputText) {
         const browser = await puppeteer.launch();

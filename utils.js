@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios");
 
 const updateDetails = async (inputItem, id, con) => {
     const sql = `UPDATE detail
@@ -55,21 +56,6 @@ module.exports = {
     },
     getFileName: function (folder, neighborhood) {
         return `./scrapping-src/${folder}/result-${neighborhood}.json`
-    },
-    getFiles: async function (dir) {
-        return new Promise(async (resolve) => {
-            fs.readdir(dir, (err, files) => {
-                if (err) {
-                    console.error(`Error reading directory ${dir}: ${err}`);
-                    return;
-                }
-
-                resolve(files.map(file => {
-                    const filePath = path.join(dir, file);
-                    return require('./' + filePath)
-                }))
-            });
-        })
     },
     saveNewItem: async function (inputItem, con) {
         const sql = `INSERT INTO item (site, link, title, accuracy)
@@ -246,6 +232,38 @@ module.exports = {
     },
     removeAccents: async function (str) {
         return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    },
+    getInnerText: async function (element) {
+        return new Promise(async (resolve) => {
+            if (!element?._rawText?.trim()) {
+                if (element?.childNodes?.length) {
+                    for (const child of element.childNodes) {
+                        const text = await this.getInnerText(child)
+                        if (text) {
+                            resolve(text)
+                        }
+                    }
+                }
+                resolve('')
+            }
+            resolve (element._rawText)
+        })
+    },
+    getHtmlText: async function (url) {
+        const html = await axios({
+            url: 'https://api.zenrows.com/v1/',
+            method: 'GET',
+            params: {
+                'url': url,
+                'apikey': '9499a51db82569b9c6f7ff27765b66c2f256ad75',
+                'premium_proxy': 'true',
+                'proxy_country': 'ar',
+            },
+        }).catch(error => {
+            console.log(error)
+            return undefined
+        });
+        return html.data
     }
 }
 

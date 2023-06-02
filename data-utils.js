@@ -2,6 +2,7 @@ const mysql = require('mysql');
 const utils = require('./utils')
 const fs = require("fs");
 const KEY_MAPPERS = require('./generic-data/key-mappers.json')
+const path = require("path");
 const connection = null
 module.exports = {
     getConnection: async function () {
@@ -13,11 +14,26 @@ module.exports = {
         });
     },
     recapPageNum: async function (scrapperId, groupingPages) {
-        const files = await utils.getFiles(await this.getScrappingMainFolder(scrapperId))
+        const files = await this.getFiles(await this.getScrappingMainFolder(scrapperId))
         return (files.length * groupingPages) + 1 || 1
     },
+    getFiles: async function (dir) {
+        return new Promise(async (resolve) => {
+            fs.readdir(dir, (err, files) => {
+                if (err) {
+                    console.error(`Error reading directory ${dir}: ${err}`);
+                    return;
+                }
+
+                resolve(files.map(file => {
+                    const filePath = path.join(dir, file);
+                    return require('./' + filePath)
+                }))
+            });
+        })
+    },
     persist: async function (scrapperId, connection) {
-        const files = await utils.getFiles(await this.getScrappingMainFolder(scrapperId))
+        const files = await this.getFiles(await this.getScrappingMainFolder(scrapperId))
         await connection.connect(async function (err) {
             if (err) throw err;
             for (let array of files) {
@@ -80,11 +96,34 @@ module.exports = {
             console.log('File was created successfully.');
         })
     },
-    createGenericFile: async function (fileName, dataArray) {
+    createGenericFile: async function (fileName, data, type = 'json') {
         const mainFolder = './generic-data'
-        await fs.writeFile(`${mainFolder}/${fileName}.json`, JSON.stringify(dataArray), function (err) {
+        const fileData = type === 'json' ? JSON.stringify(data) : data
+        const extension = type === 'json' ? '.json' : ''
+        await fs.writeFile(`${mainFolder}/${fileName}${extension}`, fileData, function (err) {
             if (err) throw err;
             console.log('File was created successfully.');
         })
+    },
+    getGenericData: async function (filename) {
+        return fs.readFileSync(filename).toString()
+    },
+    getPrice: async function (text) {
+        const types = [
+            {
+                symbol: 'U$S',
+                name: 'dollar'
+            },
+            {
+                symbol: '$',
+                name: 'peso'
+            }
+        ]
+        const coin = types.find(e => text.indexOf(e.symbol) !== -1)
+        if (!coin) return null
+        return {
+            type: coin.name,
+            amount: text.replaceAll('.', '').split(coin.symbol)?.[1]?.trim()
+        }
     }
 };
