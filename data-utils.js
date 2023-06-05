@@ -83,7 +83,7 @@ module.exports = {
         }
     },
     getScrappingMainFolder: async function (scrappingId) {
-        const scrappingFolder = `./${scrappingId}-${utils.getDateString()}`
+        const scrappingFolder = `${scrappingId}-${utils.getDateString()}`
         if (!fs.existsSync(`./scrapping-src/${scrappingFolder}`)) {
             fs.mkdirSync(`./scrapping-src/${scrappingFolder}`);
         }
