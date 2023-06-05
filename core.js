@@ -282,7 +282,11 @@ module.exports = {
             retArray = [...retArray, ...data]
             // this checks if it has to save the accumulated data, if so, cleans the array
             if (this._hasToSave(pageNumber, groupingPages)) {
-                await dataUtils.createRealScrapFile(id, pageNumber, retArray)
+                try {
+                    await dataUtils.createRealScrapFile(id, pageNumber, retArray)
+                } catch (e) {
+                    throw e
+                }
                 retArray = []
                 saved = true
             }

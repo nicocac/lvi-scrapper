@@ -92,7 +92,7 @@ module.exports = {
     createRealScrapFile: async function (scrappingId, currentPage, dataArray) {
         const mainFolder = await this.getScrappingMainFolder(scrappingId)
         await fs.writeFile(`${mainFolder}/page-${currentPage}.json`, JSON.stringify(dataArray), function (err) {
-            if (err) throw err;
+            if (err) console.log(`Error creating file ${mainFolder}/page-${currentPage}.json: ${JSON.stringify(err)}`);
             console.log('File was created successfully.');
         })
     },
