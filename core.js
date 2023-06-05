@@ -201,15 +201,18 @@ module.exports = {
         await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
     },
     realScrapApi: async function (url, id, groupingPages, test = false) {
+        let saved = false
         let rootHtml
         try {
-            rootHtml = await dataUtils.getGenericData('./generic-data/scrappingApi')
+            if (test) {
+                rootHtml = await dataUtils.getGenericData('./generic-data/scrappingApi')
+            }
         } catch (e) {
         }
 
         if (!rootHtml) {
             rootHtml = await utils.getHtmlText(url)
-            await dataUtils.createGenericFile('scrappingApi', html, 'text')
+            test && await dataUtils.createGenericFile('scrappingApi', html, 'text')
         }
 
         const selectors = {
@@ -229,7 +232,10 @@ module.exports = {
                 : parseInt(pageArray[pageArray.length - 1].textContent))
             : 1
         let pageNumber = await dataUtils.recapPageNum(id, groupingPages);
+
+        let retArray = []
         for (pageNumber; pageNumber <= pages; pageNumber++) {
+            console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
             if (pageNumber > 1) {
                 rootHtml = await utils.getHtmlText(`${url}?page=${pageNumber}`)
             }
@@ -244,29 +250,84 @@ module.exports = {
                 const price = await dataUtils.getPrice(element.querySelector(selectors.price).textContent)
                 const link = element.querySelector(selectors.link).getAttribute('href')
                 try {
-                    detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
+                    if (test) {
+                        detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
+                    }
                 } catch (e) {
                 }
 
                 if (!detailHtml) {
                     detailHtml = await utils.getHtmlText(link)
-                    await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
+                    test && await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
                 }
-
+                console.log(`Processing link: ${link}`)
                 const detailDom = parse(detailHtml);
-
+                const featureDescription = await this._getFeatureDescription(detailDom, 'p')
+                const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
+                const analyzedData = await dataUtils.analyzeData(completeData)
                 data.push({
                     link,
                     title,
-                    details: {
-                        meters: mts?.split('\n')?.[0],
-                        price,
-                        ...(await this._getFeatureDescription(detailDom, 'p'))
-                    }
+                    finished: (await this._isFinished(detailDom)),
+                    meters: mts?.split('\n')?.[0],
+                    price,
+                    announcer: (await this._getAnnouncerType(detailDom)),
+                    ...featureDescription,
+                    ...(await this._getLocationData(detailDom)),
+                    ...analyzedData
                 })
+                console.log(`data: ${JSON.stringify(data[data.length - 1])}`)
             }
-            console.log(data)
+            console.log('Flatting data')
+            retArray = [...retArray, ...data]
+            // this checks if it has to save the accumulated data, if so, cleans the array
+            if (this._hasToSave(pageNumber, groupingPages)) {
+                await dataUtils.createRealScrapFile(id, pageNumber, retArray)
+                retArray = []
+                saved = true
+            }
         }
+        if (!saved && pages !== 0) {
+            retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0} : utils.getAccuracy(item))
+            await dataUtils.createRealScrapFile(id, pages, retArray)
+        }
+        if (pages === 0) {
+            console.log('Scraper finished without results')
+        }
+    },
+    _getAnnouncerType: async function (document) {
+        const element = await document.querySelector('.clearfix .container.px2 div.h5.gray')
+        return element?.textContent || 'no data'
+    },
+    _isFinished: async function (document) {
+        const element = await document.querySelector('#camera .h2')
+        return element?.textContent && element?.textContent?.toLowerCase()?.indexOf('finalizado') !== -1
+    },
+    _getLocationData: async function (document) {
+        let [city, neighborhood] = await this._getLocationDOMData(document, '_ciudad')
+        if (!neighborhood) {
+            neighborhood = JSON.parse(JSON.stringify(city))
+            city = undefined
+        }
+        const province = (await this._getLocationDOMData(document, '_provinicia'))?.[0] ?? ''
+        return {
+            neighborhood,
+            city,
+            province
+        }
+    },
+    _getLocationDOMData: async function (document, locationInput) {
+        const elements = document.querySelectorAll('.container.main-wrapper .bg-light-gray > div')
+        const mappedElements = elements
+            ?.map(e => {
+                return {
+                    text: e?.querySelector('div > div + div')?.textContent?.trim() || e?.querySelector('a')?.textContent?.trim(),
+                    label: e?.querySelector('title')?.textContent
+                }
+            })
+        const filteredElements = mappedElements?.filter(e => e?.label && e?.label?.indexOf(locationInput) !== -1)
+        return filteredElements?.map(e => e.text)
+
     },
     _getFeatureDescription: async function (document, selector) {
         const asArray = Array.from(document.querySelectorAll(selector))
@@ -281,10 +342,9 @@ module.exports = {
         }
         return result
     },
-    hasToSave: function (page, groupingPages) {
+    _hasToSave: function (page, groupingPages) {
         return page % groupingPages === 0
-    }
-    ,
+    },
     // this scrapper gets all the locations by province that are registered in argentina.gob.ar
     locationScrap: async function (province) {
         const browser = await puppeteer.launch();
@@ -320,8 +380,7 @@ module.exports = {
 
         await dataUtils.createGenericFile('province-data', values)
         await browser.close();
-    }
-    ,
+    }   ,
     // this scrapper gets all the neighborhoods that are defined in la voz del interior
     neighborhoodScrap: async function (inputSelector, inputText) {
         const browser = await puppeteer.launch();
