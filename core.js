@@ -239,7 +239,7 @@ module.exports = {
             if (pageNumber > 1) {
                 rootHtml = await utils.getHtmlText(`${url}?page=${pageNumber}`)
             }
-            const cards = dom.querySelectorAll(selectors.card)
+            const cards = dom.querySelectorAll(selectors.card)[0]
 
             const data = []
 
