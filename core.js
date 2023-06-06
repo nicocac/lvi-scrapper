@@ -285,6 +285,7 @@ module.exports = {
                 try {
                     await dataUtils.createRealScrapFile(id, pageNumber, retArray)
                 } catch (e) {
+                    console.error(e)
                     throw e
                 }
                 retArray = []
