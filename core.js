@@ -239,7 +239,7 @@ module.exports = {
             if (pageNumber > 1) {
                 rootHtml = await utils.getHtmlText(`${url}?page=${pageNumber}`)
             }
-            const cards = dom.querySelectorAll(selectors.card)[0]
+            const cards = dom.querySelectorAll(selectors.card)
 
             const data = []
 
@@ -285,7 +285,6 @@ module.exports = {
                 try {
                     await dataUtils.createRealScrapFile(id, pageNumber, retArray)
                 } catch (e) {
-                    console.error(e)
                     throw e
                 }
                 retArray = []
@@ -299,6 +298,9 @@ module.exports = {
         if (pages === 0) {
             console.log('Scraper finished without results')
         }
+    },
+    fsWriteTry: async function (id, pageNumber, retArray) {
+        await dataUtils.createRealScrapFile(id, pageNumber, retArray)
     },
     _getAnnouncerType: async function (document) {
         const element = await document.querySelector('.clearfix .container.px2 div.h5.gray')
