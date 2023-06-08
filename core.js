@@ -243,7 +243,8 @@ module.exports = {
 
             const data = []
 
-            for (const element of cards) {
+            for (let i = 0; i < cards.length; i++) {
+                const element = cards[i]
                 let detailHtml = ''
                 const mts = element.querySelector(selectors.mts).textContent
                 const title = element.querySelector(selectors.title).textContent
@@ -260,7 +261,7 @@ module.exports = {
                     detailHtml = await utils.getHtmlText(link)
                     test && await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
                 }
-                console.log(`Processing link: ${link}`)
+                console.log(`${i} - Processing link: ${link}`)
                 const detailDom = parse(detailHtml);
                 const featureDescription = await this._getFeatureDescription(detailDom, 'p')
                 const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
@@ -276,13 +277,13 @@ module.exports = {
                     ...(await this._getLocationData(detailDom)),
                     ...analyzedData
                 })
-                console.log(`data: ${JSON.stringify(data[data.length - 1])}`)
             }
             console.log('Flatting data')
             retArray = [...retArray, ...data]
             // this checks if it has to save the accumulated data, if so, cleans the array
             if (this._hasToSave(pageNumber, groupingPages)) {
                 try {
+                    console.log('Saving ...')
                     await dataUtils.createRealScrapFile(id, pageNumber, retArray)
                 } catch (e) {
                     throw e
