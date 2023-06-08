@@ -250,7 +250,15 @@ module.exports = {
         })
     },
     getHtmlText: async function (url) {
+        setTimeout(async () => {
         const html = await axios({
+            url,
+            method: 'GET'
+        }).catch(error => {
+            console.log(error)
+            return undefined
+        });
+        /* const html = await axios({
             url: 'https://api.zenrows.com/v1/',
             method: 'GET',
             params: {
@@ -262,8 +270,9 @@ module.exports = {
         }).catch(error => {
             console.log(error)
             return undefined
-        });
+        }); */
         return html.data
+        }, 500)
     }
 }
 
