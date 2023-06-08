@@ -253,13 +253,6 @@ module.exports = {
         return new Promise(resolve => {
             setTimeout(async () => {
                 const html = await axios({
-                    url,
-                    method: 'GET'
-                }).catch(error => {
-                    console.log(error)
-                    resolve(undefined)
-                });
-                /* const html = await axios({
                     url: 'https://api.zenrows.com/v1/',
                     method: 'GET',
                     params: {
@@ -271,9 +264,9 @@ module.exports = {
                 }).catch(error => {
                     console.log(error)
                     return undefined
-                }); */
+                });
                 resolve(html.data)
-            }, 500)
+            }, Math.random() * 2000)
         })
     }
 }
