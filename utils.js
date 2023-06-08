@@ -250,29 +250,31 @@ module.exports = {
         })
     },
     getHtmlText: async function (url) {
-        setTimeout(async () => {
-        const html = await axios({
-            url,
-            method: 'GET'
-        }).catch(error => {
-            console.log(error)
-            return undefined
-        });
-        /* const html = await axios({
-            url: 'https://api.zenrows.com/v1/',
-            method: 'GET',
-            params: {
-                'url': url,
-                'apikey': '9499a51db82569b9c6f7ff27765b66c2f256ad75',
-                'premium_proxy': 'true',
-                'proxy_country': 'ar',
-            },
-        }).catch(error => {
-            console.log(error)
-            return undefined
-        }); */
-        return html.data
-        }, 500)
+        return new Promise(resolve => {
+            setTimeout(async () => {
+                const html = await axios({
+                    url,
+                    method: 'GET'
+                }).catch(error => {
+                    console.log(error)
+                    resolve(undefined)
+                });
+                /* const html = await axios({
+                    url: 'https://api.zenrows.com/v1/',
+                    method: 'GET',
+                    params: {
+                        'url': url,
+                        'apikey': '9499a51db82569b9c6f7ff27765b66c2f256ad75',
+                        'premium_proxy': 'true',
+                        'proxy_country': 'ar',
+                    },
+                }).catch(error => {
+                    console.log(error)
+                    return undefined
+                }); */
+                resolve(html.data)
+            }, 500)
+        })
     }
 }
 
