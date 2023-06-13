@@ -3,6 +3,7 @@ const utils = require('./utils')
 const fs = require("fs");
 const KEY_MAPPERS = require('./generic-data/key-mappers.json')
 const path = require("path");
+const {TYPE_MAPPER} = require("./constants");
 const connection = null
 module.exports = {
     getConnection: async function () {
@@ -32,6 +33,54 @@ module.exports = {
             });
         })
     },
+    getFeatureTypes: async function (files) {
+        return [...new Set(files
+            .flatMap(f => f.map(file => file.features))
+            .flatMap(f => f.split(','))
+            .filter(Boolean)
+            .flatMap(f => f.split(' '))
+            .filter(s => s.toUpperCase().indexOf('FICHA') !== -1))]
+    },
+    getFeatureValues: function (featureTypes, item) {
+        return featureTypes.flatMap(type =>
+            item.features.split(',')
+                .filter(Boolean)
+                .filter(f => f.indexOf(type) !== -1)
+                .map(f => f.split(' ').filter(Boolean))
+                .map(f => {
+                    const [t, ...value] = f
+                    return {
+                        [t]: value.join(' ')
+                    }
+                })
+        ).reduce((previous, current) => {
+            return {
+                ...previous,
+                ...current
+            }
+        }, {})
+    },
+    featuresKeyMapper: function (featuresByType) {
+        return featuresByType.map(f =>
+            Object.keys(f).map(key => {
+                const mappedKey = TYPE_MAPPER
+                    .find(translation => key.indexOf(translation.match) !== -1)
+                return {
+                    [mappedKey.label]: f[key]
+                }
+            }).reduce((previous, current) => {
+                return {
+                    ...previous,
+                    ...current
+                }
+            }, {}))
+    },
+    destructureFeatures: async function (scrapingDir) {
+        const files = await this.getFiles(scrapingDir)
+        const features = await this.getFeatureTypes(files)
+        const values = files[0].map(i => this.getFeatureValues(features, i))
+        return this.featuresKeyMapper(values)
+    },
     persist: async function (scrapperId, connection) {
         const files = await this.getFiles(await this.getScrappingMainFolder(scrapperId))
         await connection.connect(async function (err) {
@@ -52,9 +101,6 @@ module.exports = {
                 }
             }
         })
-    },
-    persistDataArray: async function (dataArray) {
-        await this.persist(dataArray, this.getConnection())
     },
     analyzeData: async function (description) {
         const frenteNorte = KEY_MAPPERS['frente']['norte'].some(key => description.indexOf(key) !== -1)
