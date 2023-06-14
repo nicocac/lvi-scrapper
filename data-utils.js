@@ -1,10 +1,9 @@
 const mysql = require('mysql');
-const utils = require('./utils')
+const utils = require('./utils');
 const fs = require("fs");
 const KEY_MAPPERS = require('./generic-data/key-mappers.json')
 const path = require("path");
 const {TYPE_MAPPER} = require("./constants");
-const {getAccuracy} = require("./utils");
 const connection = null
 module.exports = {
     getConnection: async function () {
