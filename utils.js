@@ -39,17 +39,14 @@ module.exports = {
             .filter(Boolean)
             .length
         const detailOccurrences = neighborhoodKeys.map(key =>
-            `${item.details?.description?.toUpperCase()} ${item.details?.features?.toUpperCase()}`
+            `${item?.description?.toUpperCase()} ${item?.features?.toUpperCase()}`
                 ?.indexOf(key.toUpperCase()) !== -1)
             .filter(Boolean)
             .length
         // the title has a 60% of incidence within the accuracy
         const mainTitleAccuracy = (((mainTitleOccurrences * 100) / neighborhoodKeys.length) * 60) / 100
         const detailAccuracy = (((detailOccurrences * 100) / neighborhoodKeys.length) * 40) / 100
-        return {
-            ...item,
-            accuracy: mainTitleAccuracy + detailAccuracy
-        }
+        return mainTitleAccuracy + detailAccuracy
     },
     getDateString: function () {
         return [new Date()].map(date => `${date.getDate()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getFullYear()}`)[0]

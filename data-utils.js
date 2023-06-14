@@ -4,6 +4,7 @@ const fs = require("fs");
 const KEY_MAPPERS = require('./generic-data/key-mappers.json')
 const path = require("path");
 const {TYPE_MAPPER} = require("./constants");
+const {getAccuracy} = require("./utils");
 const connection = null
 module.exports = {
     getConnection: async function () {
@@ -75,30 +76,41 @@ module.exports = {
                 }
             }, {}))
     },
-    destructureFeatures: async function (scrapingDir) {
-        const files = await this.getFiles(scrapingDir)
-        const features = await this.getFeatureTypes(files)
-        const values = files[0].map(i => this.getFeatureValues(features, i))
+    destructureFeatures: function (file, features) {
+        const values = file.map(i => this.getFeatureValues(features, i))
         return this.featuresKeyMapper(values)
     },
-    persist: async function (scrapperId, connection) {
-        const files = await this.getFiles(await this.getScrappingMainFolder(scrapperId))
+    completeData: async function (dir) {
+        const files = await this.getFiles(dir)
+        const features = await this.getFeatureTypes(files)
+        return files.flatMap(file => {
+            const f = this.destructureFeatures(file, features)
+            return file.map((item, index) => {
+                return {
+                    ...item,
+                    ...f[index],
+                    accuracy: utils.getAccuracy(item)
+                }
+            })
+        })
+    },
+    persist: async function (dir) {
+        const connection = this.getConnection()
+        const items = this.completeData(dir)
         await connection.connect(async function (err) {
             if (err) throw err;
-            for (let array of files) {
-                for (let scrappedItem of array) {
-                    let itemId
-                    const sqlQueryExists = `select id
-                                            from item
-                                            where link = '${scrappedItem.link}'`;
-                    await connection.query(sqlQueryExists, async function (err, result) {
-                        if (err) throw err;
-                        itemId = result?.[0]?.id
-                        !itemId && await utils.saveNewItem(scrappedItem, connection);
-                        itemId && await utils.updateItem(scrappedItem, itemId, connection)
-                    });
+            for (let item of items) {
+                let itemId
+                const sqlQueryExists = `select id
+                                        from item
+                                        where link = '${item.link}'`;
+                await connection.query(sqlQueryExists, async function (err, result) {
+                    if (err) throw err;
+                    itemId = result?.[0]?.id
+                    !itemId && await utils.saveNewItem(item, connection);
+                    itemId && await utils.updateItem(item, itemId, connection)
+                });
 
-                }
             }
         })
     },

@@ -269,6 +269,7 @@ module.exports = {
                 data.push({
                     link,
                     title,
+                    // TODO check this data
                     finished: (await this._isFinished(detailDom)),
                     meters: mts?.split('\n')?.[0],
                     price,
@@ -293,7 +294,6 @@ module.exports = {
             }
         }
         if (!saved && pages !== 0) {
-            retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0} : utils.getAccuracy(item))
             await dataUtils.createRealScrapFile(id, pages, retArray)
         }
         if (pages === 0) {
