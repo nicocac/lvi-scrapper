@@ -94,6 +94,7 @@ module.exports = {
                     const featureValues = this.getFeatureValues(features, i)
                     return {
                         ...i,
+                        // maps each feature property e.g.(ficha_cuidad) using the TYPE_MAPPER constant to translate it e.g.(city)
                         ...this.destructureFeatures(featureValues)
                     }
                 })
