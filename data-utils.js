@@ -70,21 +70,6 @@ module.exports = {
             }
         }, {})
     },
-    featuresKeyMapper: function (featuresByType) {
-        return featuresByType.map(f =>
-            Object.keys(f).map(key => {
-                const mappedKey = TYPE_MAPPER
-                    .find(translation => key.indexOf(translation.match) !== -1)
-                return {
-                    [mappedKey.label]: f[key]
-                }
-            }).reduce((previous, current) => {
-                return {
-                    ...previous,
-                    ...current
-                }
-            }, {}))
-    },
     destructureFeatures: function (featureValues) {
         return Object.keys(featureValues).map(key => {
             const mappedKey = TYPE_MAPPER.find(translation => key.indexOf(translation.match) !== -1)
@@ -103,10 +88,9 @@ module.exports = {
         // get types of features by key ficha_xxx
         const features = await this.getFeatureTypes(files)
         return files.flatMap(file => {
-            // get each feature and map it taking into account the constant TYPE_MAPPER
-            // const f = this.destructureFeatures(file, features)
             return file
                 .map(i => {
+                    // get the feature types splitting each one from features attribute based on the keywords ficha_xxx
                     const featureValues = this.getFeatureValues(features, i)
                     return {
                         ...i,
