@@ -275,7 +275,6 @@ module.exports = {
                     price,
                     announcer: (await this._getAnnouncerType(detailDom)),
                     ...featureDescription,
-                    ...(await this._getLocationData(detailDom)),
                     ...analyzedData
                 })
             }

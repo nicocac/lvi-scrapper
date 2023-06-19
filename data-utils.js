@@ -11,7 +11,7 @@ module.exports = {
             host: "127.0.0.1",
             user: "root",
             password: "root",
-            database: "inmoscrap"
+            database: "real_scrap"
         });
     },
     recapPageNum: async function (scrapperId, groupingPages) {
@@ -42,7 +42,7 @@ module.exports = {
             .filter(s => s.toUpperCase().indexOf('FICHA') !== -1))]
     },
     getFeatureValues: function (featureTypes, item) {
-        return featureTypes.flatMap(type =>
+        const mappedFeatureTypes = featureTypes.flatMap(type =>
             item.features.split(',')
                 .filter(Boolean)
                 .filter(f => f.indexOf(type) !== -1)
@@ -53,7 +53,17 @@ module.exports = {
                         [t]: value.join(' ')
                     }
                 })
-        ).reduce((previous, current) => {
+        )
+        const mappedCity = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('ciudad') !== -1))
+        const mappedWithoutCity = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('ciudad') === -1))
+        const processed = [...mappedCity.map((f, i) => {
+            const key = Object.keys(f)[0]
+                return i > 0
+                    ?  {ficha_barrio: f[key]}
+                    : f
+            }
+        ), ...mappedWithoutCity]
+        return processed.reduce((previous, current) => {
             return {
                 ...previous,
                 ...current
@@ -75,27 +85,48 @@ module.exports = {
                 }
             }, {}))
     },
-    destructureFeatures: function (file, features) {
-        const values = file.map(i => this.getFeatureValues(features, i))
-        return this.featuresKeyMapper(values)
+    destructureFeatures: function (featureValues) {
+        return Object.keys(featureValues).map(key => {
+            const mappedKey = TYPE_MAPPER.find(translation => key.indexOf(translation.match) !== -1)
+            return {
+                [mappedKey.label]: featureValues[key]
+            }
+        }).reduce((previous, current) => {
+            return {
+                ...previous,
+                ...current
+            }
+        }, {})
     },
     completeData: async function (dir) {
         const files = await this.getFiles(dir)
+        // get types of features by key ficha_xxx
         const features = await this.getFeatureTypes(files)
         return files.flatMap(file => {
-            const f = this.destructureFeatures(file, features)
-            return file.map((item, index) => {
-                return {
-                    ...item,
-                    ...f[index],
-                    accuracy: utils.getAccuracy(item)
-                }
-            })
+            // get each feature and map it taking into account the constant TYPE_MAPPER
+            // const f = this.destructureFeatures(file, features)
+            return file
+                .map(i => {
+                    const featureValues = this.getFeatureValues(features, i)
+                    return {
+                        ...i,
+                        ...this.destructureFeatures(featureValues)
+                    }
+                })
+                .filter(item => item?.price?.type && item?.price?.amount)
+                .map((item) => {
+                    return {
+                        ...item,
+                        // calculates the accuracy of the data based on the neighborhood
+                        accuracy: utils.getAccuracy(item, item.neighborhood || item.city)
+                    }
+                })
         })
     },
     persist: async function (dir) {
-        const connection = this.getConnection()
-        const items = this.completeData(dir)
+        const connection = await this.getConnection()
+        const items = await this.completeData(dir)
+        console.log(`inserting ${items.length} items`)
         await connection.connect(async function (err) {
             if (err) throw err;
             for (let item of items) {
@@ -109,7 +140,6 @@ module.exports = {
                     !itemId && await utils.saveNewItem(item, connection);
                     itemId && await utils.updateItem(item, itemId, connection)
                 });
-
             }
         })
     },

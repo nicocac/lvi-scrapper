@@ -5,6 +5,7 @@ module.exports = {
         {match: "facilidad", label: "paymentFacilities"},
         {match: "provincia", label: "province"},
         {match: "ciudad", label: "city"},
-        {match: "aptocredito", label: "credit"}
+        {match: "aptocredito", label: "credit"},
+        {match: "barrio", label: "neighborhood"}
     ]
 }

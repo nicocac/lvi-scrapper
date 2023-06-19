@@ -32,7 +32,7 @@ const updateDetails = async (inputItem, id, con) => {
 
 module.exports = {
     getAccuracy: function (item) {
-        const neighborhoodKeys = item.neighborhood.split('-').filter(k => k !== 'de')
+        const neighborhoodKeys = item.neighborhood.split(' ').filter(k => k !== 'de')
         const mainTitleOccurrences = neighborhoodKeys.map(key =>
             item.title?.toUpperCase()
                 ?.indexOf(key.toUpperCase()) !== -1)
@@ -55,64 +55,54 @@ module.exports = {
         return `./scrapping-src/${folder}/result-${neighborhood}.json`
     },
     saveNewItem: async function (inputItem, con) {
-        const sql = `INSERT INTO item (site, link, title, accuracy)
-                     SELECT 'la voz',
-                            '${inputItem.link}',
-                            '${inputItem.title}',
-                            '${inputItem.accuracy}'
-                     FROM dual
-                     WHERE NOT EXISTS(SELECT 1
-                                      FROM item
-                                      WHERE link = '${inputItem.link}')`;
-        await con.query(sql, async function (err, result) {
-            if (err) throw err;
+        // const insertHeader = `null,'la voz','${inputItem.link}','${inputItem.title}','${inputItem.meters}','${inputItem.price.type}',${inputItem.price.amount},'${inputItem.announcer}','${inputItem.features.replaceAll('\'', '')}','${inputItem.description.replaceAll('\'', '')}','${inputItem.neighborhood}','${inputItem.province}','${inputItem.frente}','${inputItem.fondo}',${inputItem.espacioVerde},${inputItem.duplex},${inputItem.possession},${inputItem.escritura},${inputItem.central},${inputItem.periferico},${inputItem.financia},${inputItem.propietario},'${inputItem.paymentFacilities}','${inputItem.city}',${inputItem.accuracy},'new',now()`
+        const sql = `INSERT INTO item (site, link, title, meters, priceType, price, announcer, features, description, province, city, neighborhood, front, back, green_space, duplex, possession, deed, central, peripheral, financed, owner, payment_facilities, credit, accuracy, status, last_status_date)
+                     values (?)`;
+        const values = []
+        values.push('la voz')
+        values.push(inputItem.link)
+        values.push(inputItem.title)
+        values.push(inputItem.meters)
+        values.push(inputItem.price.type)
+        values.push(inputItem.price.amount)
+        values.push(inputItem.announcer)
+        values.push(inputItem.features)
+        values.push(inputItem.description)
+        values.push(inputItem.province)
+        values.push(inputItem.city)
+        values.push(inputItem.neighborhood)
+        values.push(inputItem.frente)
+        values.push(inputItem.fondo)
+        values.push(inputItem.espacioVerde)
+        values.push(inputItem.duplex)
+        values.push(inputItem.possession)
+        values.push(inputItem.escritura)
+        values.push(inputItem.central)
+        values.push(inputItem.periferico)
+        values.push(inputItem.financia)
+        values.push(inputItem.propietario)
+        values.push(inputItem.paymentFacilities)
+        values.push(!inputItem?.credit || inputItem?.credit?.toUpperCase() === 'NO' ? false : true)
+        values.push(inputItem.accuracy)
+        values.push('new')
+        values.push(new Date())
+        await con.query(sql, [values], async function (err, result) {
+            if (err) {
+                con.rollback(() => {
+                    throw err;
+                });
+            }
             const itemId = result.insertId;
             if (itemId === 0) {
-                console.log(`Inserting itemId 0 for link: ${scrappedItem.link}`)
+                console.log(`Server status: ${result.serverStatus} - Inserting itemId 0 for link: ${inputItem.link}`)
                 return true
             }
-            const sql = `INSERT INTO detail (meters,
-                                             price,
-                                             announcer_type,
-                                             updated_at, features,
-                                             duplex,
-                                             possession,
-                                             description,
-                                             owner,
-                                             north,
-                                             location,
-                                             telephone,
-                                             mail,
-                                             item_id,
-                                             finished)
-                         VALUES (${inputItem.details.mts},
-                                 ${inputItem.details.price},
-                                 '${inputItem.details.announcerType}',
-                                 '${inputItem.details.updated_at}',
-                                 '${inputItem.details.features}',
-                                 ${inputItem.details.duplex},
-                                 ${inputItem.details.possession},
-                                 ${inputItem.details.description},
-                                 ${inputItem.details.owner},
-                                 ${inputItem.details.north},
-                                 '${inputItem.details.location}',
-                                 '${inputItem.details.telephone}',
-                                 '${inputItem.details.mail}',
-                                 ${itemId},
-                                 ${inputItem.details?.finished ? 1 : 0});`;
-            await con.query(sql, function (err, result) {
-                if (err) {
-                    console.log(`Error inserting itemId: ${itemId}: ${err.message}`)
-                }
-                console.log(`Item: ${itemId} inserted`);
-            });
         });
     },
     updateItem: async function (inputItem, id, con) {
         const sql = `UPDATE item
-                     SET title        = '${inputItem.title}',
-                         accuracy     = '${inputItem.accuracy}',
-                         neighborhood = '${inputItem.neighborhood}'
+                     SET status           = 'updated',
+                         last_status_date = now()
                      WHERE id = ${id}`
         await con.query(sql, async function (err, result) {
             if (err) throw err;
@@ -120,7 +110,6 @@ module.exports = {
                 console.log(`Updating itemId 0 for link: ${inputItem.link}`)
                 return true
             }
-            await updateDetails(inputItem, id, con)
         });
     },
     getProvince: async function () {
@@ -228,7 +217,7 @@ module.exports = {
         }
     },
     removeAccents: async function (str) {
-        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return str.normalize("NFD").replaceAll(/[\u0300-\u036f]/g, "");
     },
     getInnerText: async function (element) {
         return new Promise(async (resolve) => {
@@ -243,7 +232,7 @@ module.exports = {
                 }
                 resolve('')
             }
-            resolve (element._rawText)
+            resolve(element._rawText)
         })
     },
     getHtmlText: async function (url) {
