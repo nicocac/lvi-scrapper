@@ -14,9 +14,69 @@ module.exports = {
             database: "real_scrap"
         });
     },
-    recapPageNum: async function (scrapperId, groupingPages) {
-        const files = await this.getFiles(await this.getScrappingMainFolder(scrapperId))
-        return (files.length * groupingPages) + 1 || 1
+    recapPageNum: async function (scrapingId) {
+        return new Promise(async resolve => {
+            const folder = await this.getFolderName(scrapingId)
+            const connection = await this.getConnection()
+            await connection.connect(async function (err) {
+                if (err) throw err;
+                const sql = `select current_page
+                             from scraping
+                             where name = ?
+                               and end is null`;
+                await connection.query(sql, folder, async function (err, result) {
+                    if (err) {
+                        throw err;
+                    }
+                    resolve(result.length ? result[0]?.current_page + 1 : 1)
+                });
+            })
+        })
+    },
+    getLastId: async function (name) {
+        return new Promise(async resolve => {
+            const connection = await this.getConnection()
+            await connection.connect(async function (err) {
+                if (err) throw err;
+                const sql = `select name
+                             from scraping
+                             where name like ?
+                               and end is not null`;
+                await connection.query(sql, [name + '%'], async function (err, result) {
+                    if (err) {
+                        throw err;
+                    }
+                    resolve(result.length || 1)
+                });
+            })
+        })
+    },
+    getFolderName: async function (id) {
+        const lastFolder = await this.getLastId(id)
+        const folderName = `${id}-${lastFolder}`
+        return folderName
+    },
+    saveNewScraping: async function (id) {
+        return new Promise(async resolve => {
+            const connection = await this.getConnection()
+            await connection.connect(async function (err) {
+                if (err) throw err;
+                const sql = `insert into scraping (name, init, current_page)
+                             select '${id}',
+                                    now(),
+                                    1 
+                               from dual 
+                              where not exists (select 1 
+                                                  from scraping 
+                                                 where name = '${id}')`;
+                await connection.query(sql, async function (err, result) {
+                    if (err) {
+                        resolve(false)
+                    }
+                    resolve(true)
+                });
+            })
+        })
     },
     getFiles: async function (dir) {
         return new Promise(async (resolve) => {
@@ -57,9 +117,9 @@ module.exports = {
         const mappedCity = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('ciudad') !== -1))
         const mappedWithoutCity = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('ciudad') === -1))
         const processed = [...mappedCity.map((f, i) => {
-            const key = Object.keys(f)[0]
+                const key = Object.keys(f)[0]
                 return i > 0
-                    ?  {ficha_barrio: f[key]}
+                    ? {ficha_barrio: f[key]}
                     : f
             }
         ), ...mappedWithoutCity]
@@ -155,11 +215,10 @@ module.exports = {
         }
     },
     getScrappingMainFolder: async function (scrappingId) {
-        const scrappingFolder = `${scrappingId}-${utils.getDateString()}`
-        if (!fs.existsSync(`./scrapping-src/${scrappingFolder}`)) {
-            fs.mkdirSync(`./scrapping-src/${scrappingFolder}`);
+        if (!fs.existsSync(`./scrapping-src/${scrappingId}`)) {
+            fs.mkdirSync(`./scrapping-src/${scrappingId}`);
         }
-        return `./scrapping-src/${scrappingFolder}`
+        return `./scrapping-src/${scrappingId}`
     },
     createRealScrapFile: async function (scrappingId, currentPage, dataArray) {
         const mainFolder = await this.getScrappingMainFolder(scrappingId)

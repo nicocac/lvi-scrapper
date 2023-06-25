@@ -3,6 +3,7 @@ const utils = require("./utils");
 const dataUtils = require("./data-utils");
 const proxyChain = require('proxy-chain');
 const {parse} = require('node-html-parser')
+const {saveNewScraping} = require("./data-utils");
 module.exports = {
     realScrap: async function (url, id, groupingPages, test = false) {
         // const proxyUrl = 'http://localhost:8000';
@@ -231,8 +232,9 @@ module.exports = {
                 ? pageArray.length
                 : parseInt(pageArray[pageArray.length - 1].textContent))
             : 1
-        let pageNumber = await dataUtils.recapPageNum(id, groupingPages);
-
+        let pageNumber = await dataUtils.recapPageNum(id);
+        // save new scraping process
+        pageNumber === 1 && await saveNewScraping(id)
         let retArray = []
         for (pageNumber; pageNumber <= pages; pageNumber++) {
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
@@ -284,7 +286,8 @@ module.exports = {
             if (this._hasToSave(pageNumber, groupingPages)) {
                 try {
                     console.log('Saving ...')
-                    await dataUtils.createRealScrapFile(id, pageNumber, retArray)
+                    const folderName = dataUtils.getFolderName(id)
+                    await dataUtils.createRealScrapFile(folderName, pageNumber, retArray)
                 } catch (e) {
                     throw e
                 }
@@ -293,14 +296,12 @@ module.exports = {
             }
         }
         if (!saved && pages !== 0) {
-            await dataUtils.createRealScrapFile(id, pages, retArray)
+            const folderName = dataUtils.getFolderName(id)
+            await dataUtils.createRealScrapFile(folderName, pages, retArray)
         }
         if (pages === 0) {
             console.log('Scraper finished without results')
         }
-    },
-    fsWriteTry: async function (id, pageNumber, retArray) {
-        await dataUtils.createRealScrapFile(id, pageNumber, retArray)
     },
     _getAnnouncerType: async function (document) {
         const element = await document.querySelector('.clearfix .container.px2 div.h5.gray')
