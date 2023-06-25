@@ -3,7 +3,6 @@ const utils = require("./utils");
 const dataUtils = require("./data-utils");
 const proxyChain = require('proxy-chain');
 const {parse} = require('node-html-parser')
-const {saveNewScraping} = require("./data-utils");
 module.exports = {
     realScrap: async function (url, id, groupingPages, test = false) {
         // const proxyUrl = 'http://localhost:8000';
@@ -232,9 +231,11 @@ module.exports = {
                 ? pageArray.length
                 : parseInt(pageArray[pageArray.length - 1].textContent))
             : 1
-        let pageNumber = await dataUtils.recapPageNum(id);
+        const scrapingId = await dataUtils.getFolderName(id)
+        let pageNumber = await dataUtils.recapPageNum(scrapingId);
+
         // save new scraping process
-        pageNumber === 1 && await saveNewScraping(id)
+        pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
         let retArray = []
         for (pageNumber; pageNumber <= pages; pageNumber++) {
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
@@ -283,21 +284,18 @@ module.exports = {
             console.log('Flatting data')
             retArray = [...retArray, ...data]
             // this checks if it has to save the accumulated data, if so, cleans the array
-            if (this._hasToSave(pageNumber, groupingPages)) {
+            if (this._hasToSave(pageNumber, groupingPages) || pageNumber === pages) {
                 try {
-                    console.log('Saving ...')
-                    const folderName = dataUtils.getFolderName(id)
-                    await dataUtils.createRealScrapFile(folderName, pageNumber, retArray)
+                    await dataUtils.log(scrapingId, `Creating file for page: ${pageNumber}`)
+                    await dataUtils.createRealScrapFile(scrapingId, pageNumber, retArray)
+                    await dataUtils.log(scrapingId, `Persisting page: ${pageNumber}`)
+                    await dataUtils.persistFile(retArray, scrapingId)
                 } catch (e) {
                     throw e
                 }
                 retArray = []
                 saved = true
             }
-        }
-        if (!saved && pages !== 0) {
-            const folderName = dataUtils.getFolderName(id)
-            await dataUtils.createRealScrapFile(folderName, pages, retArray)
         }
         if (pages === 0) {
             console.log('Scraper finished without results')

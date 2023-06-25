@@ -31,8 +31,8 @@ const updateDetails = async (inputItem, id, con) => {
 }
 
 module.exports = {
-    getAccuracy: function (item) {
-        const neighborhoodKeys = item.neighborhood.split(' ').filter(k => k !== 'de')
+    getAccuracy: function (item, location) {
+        const neighborhoodKeys = location.split(' ').filter(k => k !== 'de')
         const mainTitleOccurrences = neighborhoodKeys.map(key =>
             item.title?.toUpperCase()
                 ?.indexOf(key.toUpperCase()) !== -1)
@@ -53,64 +53,6 @@ module.exports = {
     },
     getFileName: function (folder, neighborhood) {
         return `./scrapping-src/${folder}/result-${neighborhood}.json`
-    },
-    saveNewItem: async function (inputItem, con) {
-        // const insertHeader = `null,'la voz','${inputItem.link}','${inputItem.title}','${inputItem.meters}','${inputItem.price.type}',${inputItem.price.amount},'${inputItem.announcer}','${inputItem.features.replaceAll('\'', '')}','${inputItem.description.replaceAll('\'', '')}','${inputItem.neighborhood}','${inputItem.province}','${inputItem.frente}','${inputItem.fondo}',${inputItem.espacioVerde},${inputItem.duplex},${inputItem.possession},${inputItem.escritura},${inputItem.central},${inputItem.periferico},${inputItem.financia},${inputItem.propietario},'${inputItem.paymentFacilities}','${inputItem.city}',${inputItem.accuracy},'new',now()`
-        const sql = `INSERT INTO item (site, link, title, meters, priceType, price, announcer, features, description, province, city, neighborhood, front, back, green_space, duplex, possession, deed, central, peripheral, financed, owner, payment_facilities, credit, accuracy, status, last_status_date)
-                     values (?)`;
-        const values = []
-        values.push('la voz')
-        values.push(inputItem.link)
-        values.push(inputItem.title)
-        values.push(inputItem.meters)
-        values.push(inputItem.price.type)
-        values.push(inputItem.price.amount)
-        values.push(inputItem.announcer)
-        values.push(inputItem.features)
-        values.push(inputItem.description)
-        values.push(inputItem.province)
-        values.push(inputItem.city)
-        values.push(inputItem.neighborhood)
-        values.push(inputItem.frente)
-        values.push(inputItem.fondo)
-        values.push(inputItem.espacioVerde)
-        values.push(inputItem.duplex)
-        values.push(inputItem.possession)
-        values.push(inputItem.escritura)
-        values.push(inputItem.central)
-        values.push(inputItem.periferico)
-        values.push(inputItem.financia)
-        values.push(inputItem.propietario)
-        values.push(inputItem.paymentFacilities)
-        values.push(!inputItem?.credit || inputItem?.credit?.toUpperCase() === 'NO' ? false : true)
-        values.push(inputItem.accuracy)
-        values.push('new')
-        values.push(new Date())
-        await con.query(sql, [values], async function (err, result) {
-            if (err) {
-                con.rollback(() => {
-                    throw err;
-                });
-            }
-            const itemId = result.insertId;
-            if (itemId === 0) {
-                console.log(`Server status: ${result.serverStatus} - Inserting itemId 0 for link: ${inputItem.link}`)
-                return true
-            }
-        });
-    },
-    updateItem: async function (inputItem, id, con) {
-        const sql = `UPDATE item
-                     SET status           = 'updated',
-                         last_status_date = now()
-                     WHERE id = ${id}`
-        await con.query(sql, async function (err, result) {
-            if (err) throw err;
-            if (id === 0) {
-                console.log(`Updating itemId 0 for link: ${inputItem.link}`)
-                return true
-            }
-        });
     },
     getProvince: async function () {
         return getLocationData('_provincia')?.[0]

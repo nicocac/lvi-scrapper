@@ -16,21 +16,15 @@ module.exports = {
     },
     recapPageNum: async function (scrapingId) {
         return new Promise(async resolve => {
-            const folder = await this.getFolderName(scrapingId)
-            const connection = await this.getConnection()
-            await connection.connect(async function (err) {
-                if (err) throw err;
-                const sql = `select current_page
-                             from scraping
-                             where name = ?
-                               and end is null`;
-                await connection.query(sql, folder, async function (err, result) {
-                    if (err) {
-                        throw err;
-                    }
-                    resolve(result.length ? result[0]?.current_page + 1 : 1)
-                });
-            })
+            const sql = `select current_page
+                         from scraping
+                         where name = ?
+                           and end is null`;
+            const result = await this.makeQuery(sql, scrapingId)
+            if (!result) {
+                throw new Error('Error getting current page');
+            }
+            resolve(result.length ? result[0]?.current_page + 1 : 1)
         })
     },
     getLastId: async function (name) {
@@ -58,25 +52,23 @@ module.exports = {
     },
     saveNewScraping: async function (id) {
         return new Promise(async resolve => {
-            const connection = await this.getConnection()
-            await connection.connect(async function (err) {
-                if (err) throw err;
-                const sql = `insert into scraping (name, init, current_page)
-                             select '${id}',
-                                    now(),
-                                    1 
-                               from dual 
-                              where not exists (select 1 
-                                                  from scraping 
-                                                 where name = '${id}')`;
-                await connection.query(sql, async function (err, result) {
-                    if (err) {
-                        resolve(false)
-                    }
-                    resolve(true)
-                });
-            })
+            const sql = `insert into scraping (name, init, current_page)
+                         select '${id}',
+                                now(),
+                                1
+                         from dual
+                         where not exists(select 1
+                                          from scraping
+                                          where name = '${id}')`;
+            const result = await this.makeQuery(sql, null);
+            resolve(result)
         })
+    },
+    updateCurrentPage: function (currentPage, scrapingId) {
+        const sql = `update scraping
+                     set current_page = ?
+                     where name = ?`;
+        return this.makeQuery(sql, currentPage, scrapingId)
     },
     getFiles: async function (dir) {
         return new Promise(async (resolve) => {
@@ -143,9 +135,7 @@ module.exports = {
             }
         }, {})
     },
-    completeData: async function (dir) {
-        const files = await this.getFiles(dir)
-        // get types of features by key ficha_xxx
+    completeData: async function (files) {
         const features = await this.getFeatureTypes(files)
         return files.flatMap(file => {
             return file
@@ -168,10 +158,125 @@ module.exports = {
                 })
         })
     },
+    makeQuery: async function (query, ...params) {
+        return new Promise(async resolve => {
+            const connection = await this.getConnection()
+            connection.connect(async function (err) {
+                if (err) throw err;
+                connection.query(query, ...params, (error, result) => {
+                    if (error) {
+                        resolve({error});
+                        return;
+                    }
+                    resolve(result);
+                })
+            })
+        })
+    },
+    persistFile: async function (fileData, scrapingId) {
+        const items = await this.completeData([fileData])
+        for (const item of items) {
+            const sqlQueryExists = `select id
+                                    from item
+                                    where link = ?`;
+            const result = await this.makeQuery(sqlQueryExists, item.link)
+            const itemId = result?.[0]?.id
+            if (itemId) {
+                await this.persistItem(item, itemId, scrapingId)
+            }
+        }
+
+    },
+    log: async function (code, message) {
+        const sql = `insert into log (code, message)
+                     values (?, ?)`
+        return this.makeQuery(sql, [code, message])
+    },
+    getItemValues: function (inputItem, scrapingId, status) {
+        const values = []
+        values.push('la voz')
+        values.push(inputItem.link)
+        values.push(inputItem.title)
+        values.push(inputItem.meters)
+        values.push(inputItem.price.type)
+        values.push(inputItem.price.amount)
+        values.push(inputItem.announcer)
+        values.push(inputItem.features)
+        values.push(inputItem.description)
+        values.push(inputItem.province)
+        values.push(inputItem.city)
+        values.push(inputItem.neighborhood)
+        values.push(inputItem.frente)
+        values.push(inputItem.fondo)
+        values.push(inputItem.espacioVerde)
+        values.push(inputItem.duplex)
+        values.push(inputItem.possession)
+        values.push(inputItem.escritura)
+        values.push(inputItem.central)
+        values.push(inputItem.periferico)
+        values.push(inputItem.financia)
+        values.push(inputItem.propietario)
+        values.push(inputItem.paymentFacilities)
+        values.push(!inputItem?.credit || inputItem?.credit?.toUpperCase() === 'NO' ? false : true)
+        values.push(inputItem.accuracy)
+        values.push(status)
+        values.push(new Date())
+        values.push(scrapingId)
+        return values
+    },
+    saveNewItem: async function (inputItem, scrapingId) {
+        const sql = `INSERT INTO item (site, link, title, meters, priceType, price, announcer, features, description,
+                                       province, city, neighborhood, front, back, green_space, duplex, possession, deed,
+                                       central, peripheral, financed, owner, payment_facilities, credit, accuracy,
+                                       status, last_status_date)
+                     values (?)`;
+        const result = await this.makeQuery(sql, [this.getItemValues(inputItem, scrapingId, 'new')])
+        const itemId = result.insertId;
+        if (result && itemId === 0) {
+            console.log(`Server status: ${result.serverStatus} - Inserting itemId 0 for link: ${inputItem.link}`)
+            return true
+        }
+    },
+    updateItem: async function (inputItem, id, scrapingId) {
+        const {site, ...itemValues} = this.getItemValues(inputItem, scrapingId, 'updated')
+        const sql = `UPDATE item
+                     SET title=?,
+                         meters=?,
+                         priceType=?,
+                         price=?,
+                         announcer=?,
+                         features=?,
+                         description=?,
+                         province=?,
+                         city=?,
+                         neighborhood=?,
+                         front=?,
+                         back=?,
+                         green_space=?,
+                         duplex=?,
+                         possession=?,
+                         deed=?,
+                         central=?,
+                         peripheral=?,
+                         financed=?,
+                         owner=?,
+                         payment_facilities=?,
+                         credit=?,
+                         accuracy=?,
+                         status=?,
+                         last_status_date=?,
+                         last_status_process=?
+                     WHERE id = ${id}`
+        return await this.makeQuery(sql, [itemValues])
+    },
+    persistItem: async function (item, itemId, scrapingId) {
+        !itemId && await this.saveNewItem(item, scrapingId);
+        itemId && await this.updateItem(item, itemId, scrapingId);
+    },
     persist: async function (dir) {
         const connection = await this.getConnection()
-        const items = await this.completeData(dir)
-        console.log(`inserting ${items.length} items`)
+        const files = await this.getFiles(dir)
+        const items = await this.completeData(files)
         await connection.connect(async function (err) {
             if (err) throw err;
             for (let item of items) {
@@ -182,8 +287,7 @@ module.exports = {
                 await connection.query(sqlQueryExists, async function (err, result) {
                     if (err) throw err;
                     itemId = result?.[0]?.id
-                    !itemId && await utils.saveNewItem(item, connection);
-                    itemId && await utils.updateItem(item, itemId, connection)
+                    await this.persistItem(item, itemId)
                 });
             }
         })
@@ -215,10 +319,10 @@ module.exports = {
         }
     },
     getScrappingMainFolder: async function (scrappingId) {
-        if (!fs.existsSync(`./scrapping-src/${scrappingId}`)) {
-            fs.mkdirSync(`./scrapping-src/${scrappingId}`);
+        if (!fs.existsSync(`./scraping-src/${scrappingId}`)) {
+            fs.mkdirSync(`./scraping-src/${scrappingId}`);
         }
-        return `./scrapping-src/${scrappingId}`
+        return `./scraping-src/${scrappingId}`
     },
     createRealScrapFile: async function (scrappingId, currentPage, dataArray) {
         const mainFolder = await this.getScrappingMainFolder(scrappingId)
