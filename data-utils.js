@@ -70,6 +70,12 @@ module.exports = {
                      where name = ?`;
         return this.makeQuery(sql, currentPage, scrapingId)
     },
+    finishScraping: function (scrapingId) {
+        const sql = `update scraping
+                     set end = now()
+                     where name = ?`;
+        return this.makeQuery(sql, scrapingId)
+    },
     getFiles: async function (dir) {
         return new Promise(async (resolve) => {
             fs.readdir(dir, (err, files) => {
@@ -173,8 +179,37 @@ module.exports = {
             })
         })
     },
+    processDuplicated: async function () {
+        const sql = `select link, count(1)
+                       from item
+                      group by link
+                     having count(1) > 1`;
+        const results = await this.makeQuery(sql);
+        for(const result of results) {
+            const { link } = result;
+            const query = `select id 
+                             from item 
+                            where link = '${link}'
+                              and id > (select min(id) 
+                                          from item 
+                                         where link = '${link}'
+                                           and deleted_at is null)
+                              and deleted_at is null`;
+            const toDelete = await this.makeQuery(query);
+            const updateAll = `update item set deleted_at = now() where id in (?)`;
+            await this.makeQuery(updateAll, [toDelete.map(d => d.id)])
+        }
+    },
     persistFile: async function (fileData, scrapingId) {
-        const items = await this.completeData([fileData])
+        let items = []
+        for(let item of fileData) {
+            const dataToAnalyze = await utils.removeAccents(item.title.concat(item.features).toLowerCase())
+            items.push({
+                ...item,
+                ...await this.analyzeData(dataToAnalyze)
+            })
+        }
+        items = await this.completeData([items])
         for (const item of items) {
             const sqlQueryExists = `select id
                                     from item
@@ -186,6 +221,19 @@ module.exports = {
             }
         }
 
+    },
+    saveData: async function (scrapingId, pageNumber, retArray, persist) {
+        try {
+            await this.log(scrapingId, `Creating file for page: ${pageNumber}`)
+            await this.createRealScrapFile(scrapingId, pageNumber, retArray)
+            if (persist) {
+                await this.log(scrapingId, `Persisting page: ${pageNumber}`)
+                await this.persistFile(retArray, scrapingId)
+            }
+            await this.updateCurrentPage(pageNumber, scrapingId)
+        } catch (e) {
+            throw e
+        }
     },
     log: async function (code, message) {
         const sql = `insert into log (code, message)
@@ -328,9 +376,9 @@ module.exports = {
         const mainFolder = await this.getScrappingMainFolder(scrappingId)
         const data = JSON.stringify(dataArray)
         console.log(`Saving array with ${dataArray.length} items`)
-        return fs.writeFile(`${mainFolder}/page-${currentPage}.json`, data, function (err) {
+        return fs.writeFile(`${mainFolder}/data.json`, data, function (err) {
             if (err) {
-                console.log(`Error creating file ${mainFolder}/page-${currentPage}.json: ${JSON.stringify(err)}`);
+                console.log(`Error creating file ${mainFolder}/data.json on page ${currentPage}: ${JSON.stringify(err)}`);
             }
             console.log('File was created successfully.');
         })

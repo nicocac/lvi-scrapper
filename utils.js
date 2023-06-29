@@ -1,34 +1,4 @@
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-
-const updateDetails = async (inputItem, id, con) => {
-    const sql = `UPDATE detail
-                 SET meters         = ${inputItem.details.mts},
-                     price          = ${inputItem.details.price},
-                     announcer_type = '${inputItem.details.announcerType}',
-                     updated_at     = '${inputItem.details.updated_at}',
-                     features       = '${inputItem.details.features}',
-                     finished       = ${inputItem.details?.finished ? 1 : 0},
-                     duplex         = ${inputItem.details.duplex},
-                     possession     = ${inputItem.details.possession},
-                     description    = '${inputItem.details.description}',
-                     owner          = ${inputItem.details.owner},
-                     north          = ${inputItem.details.north},
-                     location       = '${inputItem.details.neighborhood}',
-                     telephone      = '${inputItem.details.telephone}',
-                     mail           = '${inputItem.details.mail}'
-                 WHERE item_id = ${id}`;
-    await con.query(sql, async function (err, result) {
-        if (err) {
-            console.log(`Error in the sentence: ${sql} - Error: ${err.message}`)
-        }
-        if (id === 0) {
-            console.log(`Updating detailId 0 for link: ${inputItem.link}`)
-            return true
-        }
-    });
-}
+const { ZenRows } = require("zenrows");
 
 module.exports = {
     getAccuracy: function (item, location) {
@@ -47,116 +17,6 @@ module.exports = {
         const mainTitleAccuracy = (((mainTitleOccurrences * 100) / neighborhoodKeys.length) * 60) / 100
         const detailAccuracy = (((detailOccurrences * 100) / neighborhoodKeys.length) * 40) / 100
         return mainTitleAccuracy + detailAccuracy
-    },
-    getDateString: function () {
-        return [new Date()].map(date => `${date.getDate()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getFullYear()}`)[0]
-    },
-    getFileName: function (folder, neighborhood) {
-        return `./scrapping-src/${folder}/result-${neighborhood}.json`
-    },
-    getProvince: async function () {
-        return getLocationData('_provincia')?.[0]
-    },
-    getCityAndNeighborhood: async function () {
-        const [city1, city2] = getLocationData('_ciudad')
-        return {
-            city: city2 ? city1 : undefined,
-            neighborhood: city2 ?? city1
-        }
-    },
-    levenshteinDistance: async function (a, b) {
-        if (a.length === 0) return b.length;
-        if (b.length === 0) return a.length;
-
-        const matrix = [];
-
-        // Initialize matrix with 0..m values for each row
-        for (let i = 0; i <= b.length; i++) {
-            matrix[i] = [i];
-        }
-
-        // Initialize matrix with 0..n values for each column
-        for (let j = 0; j <= a.length; j++) {
-            matrix[0][j] = j;
-        }
-
-        // Fill in matrix with Levenshtein distance values
-        for (let i = 1; i <= b.length; i++) {
-            for (let j = 1; j <= a.length; j++) {
-                if (b.charAt(i - 1) === a.charAt(j - 1)) {
-                    matrix[i][j] = matrix[i - 1][j - 1];
-                } else {
-                    matrix[i][j] = Math.min(
-                        matrix[i - 1][j - 1] + 1, // substitution
-                        matrix[i][j - 1] + 1,   // insertion
-                        matrix[i - 1][j] + 1    // deletion
-                    );
-                }
-            }
-        }
-
-        return matrix[b.length][a.length];
-    },
-    findWordsByProximity: async function (text, targetPhrase, maxProximity) {
-        const words = text.toLowerCase().match(/\b\w+\b/g);
-        const targetWords = targetPhrase.toLowerCase().split(/\s+/);
-        const results = [];
-
-        for (let i = 0; i < words.length; i++) {
-            const word = words[i];
-            const proximityPromises = await Promise.all(targetWords.map(async (target) => {
-                return await this.levenshteinDistance(word, target);
-            }));
-            const totalProximity = proximityPromises.reduce((acc, cur) => acc + cur, 0);
-            const averageProximity = totalProximity / proximityPromises.length;
-            if (averageProximity <= maxProximity) {
-                const composedWord = words.slice(i, i + targetWords.length).join(' ');
-                results.push({
-                    word: composedWord,
-                    index: i,
-                    proximity: averageProximity
-                });
-            }
-        }
-
-        return results;
-    },
-    createNGrams: async function (text, n) {
-        const nGrams = [];
-        for (let i = 0; i < text.length - n + 1; i++) {
-            nGrams.push(text.slice(i, i + n));
-        }
-        return nGrams;
-    },
-    findWordsByProximityNGrams: async function (text, targetPhrase, maxDistance) {
-        const textNGrams = await this.createNGrams(text.toLowerCase(), 3);
-        const targetNGrams = await this.createNGrams(targetPhrase.toLowerCase(), 3);
-
-        const nGramCounts = {};
-        textNGrams.forEach(nGram => {
-            if (nGramCounts[nGram]) {
-                nGramCounts[nGram]++;
-            } else {
-                nGramCounts[nGram] = 1;
-            }
-        });
-
-        let maxCount = 0;
-        let closestWord = null;
-        targetNGrams.forEach(nGram => {
-            if (nGramCounts[nGram]) {
-                if (nGramCounts[nGram] > maxCount) {
-                    maxCount = nGramCounts[nGram];
-                    closestWord = text.slice(textNGrams.indexOf(nGram) - 10, textNGrams.indexOf(nGram) + targetPhrase.length + 10);
-                }
-            }
-        });
-
-        if (maxCount >= targetNGrams.length - maxDistance) {
-            return closestWord;
-        } else {
-            return null;
-        }
     },
     removeAccents: async function (str) {
         return str.normalize("NFD").replaceAll(/[\u0300-\u036f]/g, "");
@@ -177,22 +37,44 @@ module.exports = {
             resolve(element._rawText)
         })
     },
-    getHtmlText: async function (url) {
+    getHtmlText: async function (url, params = {}, useProxy = true) {
         return new Promise(resolve => {
             setTimeout(async () => {
-                const html = await axios({
-                    url: 'https://api.zenrows.com/v1/',
-                    method: 'GET',
-                    params: {
-                        'url': url,
-                        'apikey': '9499a51db82569b9c6f7ff27765b66c2f256ad75',
-                        'premium_proxy': 'true',
-                        'proxy_country': 'ar',
-                    },
-                }).catch(error => {
-                    console.log(error)
-                    return undefined
-                });
+                let html
+                const headers =
+                    {
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "Connection": "keep-alive",
+                        "Cookie": "_ga_F3LBW12NCG=GS1.1.1686185697.6.1.1686185714.43.0.0; _ga=GA1.3.137297713.1675950266; __gads=ID=f491492e3a54f546-229977a883df00c1:T=1675950265:RT=1686185698:S=ALNI_Mam87EZd6wxafAVgDKatrmSaNbm8A; __gpi=UID=000009eb5333b886:T=1675950265:RT=1686185698:S=ALNI_MbKKJwSFlmQHK59cNnh6h1meMf9sg; _cb=BOfrBkDqQAvxPgaYj; _chartbeat2=.1675950268379.1686185698054.0000000100000011.D4aN9pBgYimdCe1DIADty3TaDVyYXa.1; _cc_id=fa26da7db2cad193f06b7baa26d1246a; _fbp=fb.2.1675950269096.1278304223; cto_bundle=Ou8SBV9VbEY1UzAxQThPQlZZcGhabHV4TGFsU1lEaWg4NWlESVd2c2pVSSUyQkwxOGJzbDhMTmNENGdmb0k3aHBPVSUyQlIxMSUyRjl4TkFORk42cG9yaUhIczBIaGpkMktHVm1xWERlWVlVY1ZGS0pyU1hrd2tlNEVpY2tyWnloSnpOaktqa1AxeTZjZGV1aktocDRVS1VUUEs3RHY0ajhSQ0slMkJyM0tDZVhvdkduYXFjclpObld5VHNHJTJGTjlGRWRyUnh2SmYxQ2NR; cto_bidid=8UUg6191ZnRHSklNZFoyRlRiQ0hJNWgzVVBJcWl2MCUyQjVMcnRDSDZTQnlXbG96RElFaSUyQm9zYzE5dUxpZVhwYVc4Z2VGY0hSWUxBUTJkSU9JOHBvTk5XSm4lMkYyb2p0WHZWZU9nb01jMkIlMkJiaTBMUVdDdnVVOFB1RG50d2clMkJLRWJCcmg5WWo; g_state={\"i_p\":1689608703848,\"i_l\":4}; _ga_7WQCK7P492=GS1.1.1686185697.5.1.1686185714.0.0.0; _sharedID=edb537f8-cd0e-4752-85ef-f1d88b6b9e13; paywall_meter=1; paywall_meter_last_check=Tue%20Jun%2006%202023%2014:42:16%20GMT-0300%20(Argentina%20Standard%20Time); XSRF-TOKEN=eyJpdiI6IjVGY3BlTWswbnNpeENla3UyZnVWU1E9PSIsInZhbHVlIjoiVHVwMllUM1VwdWdlZWhOR0JBS3FJZEVPLzJqSlFXZkd4Z1o3YkhLZ0dRWitpNWFTVXpzY0tlY1BaSG9URzA4RGY5VUNCd25LcjFTU0hPeE1ubzVLMHFIRnprL1dhLzlnVnh2NzN4emk5UkxUOW0vYUEwVm0wNmxybDAzbUlIY1QiLCJtYWMiOiJjOGNlNjhjNDE5ZDQ3M2M4YmRmMzAyMzE4N2Y3YTM5YjU1MzgxMDNjZTA0ZjA3YTZmODdiMmFlNjlkYzQwMTI3In0%3D; clasificados_la_voz_session=pxAnVkZFuXwHAhNbTm0XLw4tRihKm2BV4Qh1RMSd",
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                        "Sec-Fetch-User": "?1",
+                        "TE": "trailers",
+                        "Upgrade-Insecure-Requests": "1",
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/114.0"
+                    }
+                if (useProxy) {
+                    const client = new ZenRows("9499a51db82569b9c6f7ff27765b66c2f256ad75");
+                    try {
+                        html = await client.get(url, {
+                            "premium_proxy": "true",
+                            "proxy_country": "ar"
+                        }, headers);
+                    } catch (error) {
+                        console.error(error.message);
+                        if (error.response) {
+                            console.error(error.response.data);
+                        }
+                    }
+                } else {
+                    html = await fetch(url, headers).catch(error => {
+                        console.log(error)
+                        return undefined
+                    });
+                }
                 resolve(html.data)
             }, Math.random() * 2000)
         })

@@ -1,30 +1,65 @@
-const puppeteer = require("puppeteer");
+const puppeteer = require('puppeteer');
 const utils = require("./utils");
 const dataUtils = require("./data-utils");
-const proxyChain = require('proxy-chain');
 const {parse} = require('node-html-parser')
 module.exports = {
-    realScrap: async function (url, id, groupingPages, test = false) {
-        // const proxyUrl = 'http://localhost:8000';
-        const oldProxyUrl = 'http://45.6.4.60:8081';
+    createHeadlessPage: async function (browser) {
+        const page = await browser.newPage();
+
+        // Configure request interception to block certain file types and URLs
+        await page.setRequestInterception(true);
+        page.on('request', (interceptedRequest) => {
+            const url = interceptedRequest.url();
+            const resourceType = interceptedRequest.resourceType();
+
+            // Block requests for assets (images, stylesheets, scripts, etc.) and external URLs
+            if (
+                resourceType === 'image' ||
+                resourceType === 'stylesheet' ||
+                resourceType === 'font' ||
+                url.indexOf('google') !== -1 || // Specify the protocol (http or https) accordingly
+                url.indexOf('tagmanager') !== -1 ||
+                url.indexOf('awesome') !== -1 ||
+                url.indexOf('youtube') !== -1 ||
+                url.indexOf('video') !== -1 ||
+                url.indexOf('sidebar-') !== -1 ||
+                url.indexOf('accordion-') !== -1 ||
+                url.indexOf('carousel') !== -1 ||
+                url.indexOf('gallery') !== -1 ||
+                url.indexOf('analytic') !== -1 ||
+                url.indexOf('ad-') !== -1 ||
+                url.indexOf('gstatic') !== -1 ||
+                url.indexOf('unpkg') !== -1 ||
+                url.indexOf('googleapis') !== -1 ||
+                url.indexOf('facebook') !== -1
+            ) {
+                interceptedRequest.abort();
+            } else {
+                interceptedRequest.continue();
+            }
+        });
+
+        return page;
+    },
+    realScrap: async function (url, id, groupingPages, persist = true, test = false) {
+        const proxyChain = require('proxy-chain');
+
+        // change username & password
+        const oldProxyUrl = 'http://9499a51db82569b9c6f7ff27765b66c2f256ad75:premium_proxy=true&proxy_country=ar@proxy.zenrows.com:8001';
         const newProxyUrl = await proxyChain.anonymizeProxy(oldProxyUrl);
+
         const browser = await puppeteer.launch({
             ignoreHTTPSErrors: true,
+            headless: 'new',
             args: [
-                `--proxy-server=${newProxyUrl}`,
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-accelerated-2d-canvas',
-                '--disable-gpu'
+                '--disable-gpu',
+                `--proxy-server=${oldProxyUrl}`
             ]
         });
         const page = await browser.newPage();
-
-        // signal to the intermediate proxy server what upstream proxy we want to use
-        /* await page.setExtraHTTPHeaders({
-            prueba: 'quisio',
-            'x-no-forward-upstream-proxy': 'https://api.scrapfly.io/scrape?key=scp-live-b1e846906a064b4ebea55b5d2c856821&url=https%3A%2F%2Fhttpbin.dev%2Fanything&country=ar'
-        }); */
 
         let saved = false;
         let retArray = []
@@ -32,21 +67,27 @@ module.exports = {
         try {
             await page.goto(`${url}`)
         } catch (e) {
-            setTimeout(async () => {
-                await page.goto(`${url}`)
-            }, 1.08e+7)
+            console.log('Timeout giving first page')
         }
 
         const pages = await page.$$eval('nav ul li', (pages) => pages ? (pages.length < 11 ? pages.length : pages[pages.length - 1].children[0].innerText) : 1)
 
-        let pageNumber = await dataUtils.recapPageNum(id, groupingPages);
+        const scrapingId = await dataUtils.getFolderName(id)
+        let pageNumber = await dataUtils.recapPageNum(scrapingId);
 
         for (pageNumber; pageNumber <= parseInt(pages); pageNumber++) {
-
             if (saved && test) break;
             saved = false;
-            await page.goto(`${url}?page=${pageNumber}`)
-            await page.waitForSelector('.safari-card')
+            if (pageNumber > 1) {
+                try {
+                    await Promise.all([
+                        page.goto(`${url}?page=${pageNumber}`),
+                        page.waitForSelector('.safari-card')
+                    ])
+                } catch (e) {
+                    console.log('Timeout giving new page list')
+                }
+            }
             await page.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
             await page.mouse.click(0, 0); // click on a specific point
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
@@ -81,63 +122,47 @@ module.exports = {
                     return {
                         link: element.querySelector(selectors.link).getAttribute('href'),
                         title: element.querySelector(selectors.title)?.innerText,
-                        details: {
-                            meters: element.querySelector(selectors.mts)?.innerText.split('\n')?.[0],
-                            price: getPrice(element.querySelector(selectors.price)?.innerText),
-                        }
+                        meters: element.querySelector(selectors.mts)?.innerText.split('\n')?.[0],
+                        price: getPrice(element.querySelector(selectors.price)?.innerText)
                     }
                 })
             }, selectors)
 
-            const filteredData = data.filter(item => item.details?.price?.amount && item.details?.meters)
+            const cards = data.filter(item => item.price?.amount && item.meters)
 
             const profileData = []
-            for (const i of filteredData) {
+            for (let i = 0; i < cards.length; i++) {
+                const link = cards[i].link
                 // add timeout random between 1 and 5 seconds for each profile
                 await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5000)));
                 try {
-                    await page.goto(i.link)
-                    await page.waitForSelector('div.justify-between')
-                    await page.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
-                    await page.mouse.click(10000, 10000); // click on a specific point
-                    const featureDescription = await page.$$eval('p', (results) => {
+                    const newPage = await browser.newPage();
+                    try {
+                        await Promise.all([
+                            newPage.goto(link),
+                            newPage.waitForSelector('div.justify-between')
+                        ])
+                    } catch (e) {
+                        console.log('Timeout giving detail')
+                    }
+                    console.log(`${i} - Processing link: ${link}`)
+                    await newPage.mouse.move(100, 100, {steps: 10}); // move the mouse in a human-like way
+                    await newPage.mouse.click(10000, 10000); // click on a specific point
+                    const featureDescription = await newPage.$$eval('p', (results) => {
                         const asArray = Array.from(results)
-                        const [, ...features] = asArray?.find(e => e.innerText === "Características").closest('div')?.children
-                        const [, ...otherFeatures] = asArray?.find(e => e.innerText === "Otras características").closest('div')?.children
+                        const features = Array.from(asArray.find(e => e.innerText === "Características").closest('div')?.childNodes).map(e => e.textContent.replace('\\n', '').trim()).filter(Boolean).join(',')
+                        const otherFeatures = Array.from(asArray.find(e => e.innerText === "Otras características").closest('div')?.childNodes).map(e => e.textContent.replace('\\n', '').trim()).filter(Boolean).join(',')
                         const description = asArray?.find(paragraph => paragraph?.innerText === 'Descripción')?.closest('div')?.innerText.toUpperCase()
                         return {
-                            features: [...features, ...otherFeatures]
-                                ?.map(feature => feature?.innerText.replace('\\n', '').trim())
-                                ?.join(','),
+                            features: `${features},${otherFeatures}`,
                             description
                         }
                     })
-                    const getLocationDOMData = async (locationInput) =>
-                        await page.$$eval('.container.main-wrapper .bg-light-gray > div', (results, locationInput) => {
-                            return results
-                                ?.filter(e => e?.children[0]?.children[0]?.children[0]?.textContent?.indexOf(locationInput) !== -1)
-                                ?.map(e => e?.children[0]?.children[1]?.textContent?.trim()
-                                )
-                        }, locationInput)
-                    const getLocationData = async () => {
-                        let [city, neighborhood] = await getLocationDOMData('_ciudad')
-                        if (!neighborhood) {
-                            city = undefined
-                            neighborhood = city
-                        }
-                        const province = (await getLocationDOMData('_provinicia'))?.[0] ?? ''
-                        return {
-                            neighborhood,
-                            city,
-                            province
-                        }
-                    }
-                    const locationData = await getLocationData()
                     const getContactData = async (selector, clickedSelector) => {
                         try {
-                            await page.waitForSelector(selector)
-                            await page.click(selector)
-                            return await page.$eval(clickedSelector, telButton => telButton?.innerText || 'no data')
+                            await newPage.waitForSelector(selector)
+                            await newPage.click(selector)
+                            return await newPage.$eval(clickedSelector, telButton => telButton?.innerText || 'no data')
                         } catch (e) {
                             return 'no data'
                         }
@@ -146,19 +171,23 @@ module.exports = {
                     const mail = await getContactData('#ver-mail', '#mail > a')
                     let finished = false
                     try {
-                        finished = await page.$eval('#camera .h2', result => result?.innerText && result?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1)
+                        finished = await newPage.$eval('#camera .h2', result => result?.innerText && result?.innerText?.toLowerCase()?.indexOf('finalizado') !== -1)
                     } catch (e) {
-                        // throw element not found
+                        finished = false
                     }
-                    const announcerType = await page.$eval('.clearfix .container.px2 div.h5.gray', result => {
-                        if (result?.innerText) {
-                            return 'inmobiliaria'
-                        }
-                        return 'no data'
-                    })
+                    let announcerType
+                    try {
+                        announcerType = await newPage.$eval('.clearfix .container.px2 div.h5.gray', result => {
+                            if (result?.innerText) {
+                                return 'inmobiliaria'
+                            }
+                            return 'no data'
+                        })
+                    } catch (e) {
+                        announcerType = 'no data'
+                    }
                     profileData.push({
                         ...featureDescription,
-                        ...locationData,
                         phoneNumber,
                         mail,
                         finished,
@@ -169,29 +198,16 @@ module.exports = {
                 }
             }
             console.log(`Flatting data`)
-            retArray = await Promise.all([...retArray, ...filteredData.map(async (item, index) => {
-                const completeData = await utils.removeAccents(item.title.concat(item.details.description).toLowerCase())
-                const analyzedData = await dataUtils.analyzeData(completeData)
+            retArray = await Promise.all([...retArray, ...cards.map(async (item, index) => {
                 return {
                     ...item,
-                    details: {
-                        ...item.details,
-                        ...profileData[index],
-                        // it analyzes data to infer some features
-                        ...analyzedData
-                    }
+                    ...profileData[index]
                 }
             })])
             // this checks if it has to save the accumulated data, if so, cleans the array
-            if (this.hasToSave(pageNumber, groupingPages)) {
-                await dataUtils.createRealScrapFile(id, pageNumber, retArray)
-                retArray = []
-                saved = true
-            }
-        }
-        if (!saved && pages !== 0) {
-            retArray = retArray.map(item => item.details.finished ? {...item, accuracy: 0} : utils.getAccuracy(item))
-            await dataUtils.createRealScrapFile(id, pages, retArray)
+            await dataUtils.saveData(scrapingId, pageNumber, retArray, persist)
+            retArray = []
+            saved = true
         }
         if (pages === 0) {
             console.log('Scraper finished without results')
@@ -200,7 +216,7 @@ module.exports = {
         await browser.close();
         await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
     },
-    realScrapApi: async function (url, id, groupingPages, test = false) {
+    realScrapApi: async function (url, id, persist = true, test = false) {
         let saved = false
         let rootHtml
         try {
@@ -224,7 +240,7 @@ module.exports = {
             price: 'a .card-body > div:last-child'
         }
 
-        const dom = parse(rootHtml);
+        let dom = parse(rootHtml);
         const pageArray = Array.from(dom.querySelectorAll(selectors.pages))
         let pages = pageArray
             ? (pageArray.length < 11
@@ -238,12 +254,13 @@ module.exports = {
         pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
         let retArray = []
         for (pageNumber; pageNumber <= pages; pageNumber++) {
-            console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}`)
+            console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}?page=${pageNumber}`)
             if (pageNumber > 1) {
                 rootHtml = await utils.getHtmlText(`${url}?page=${pageNumber}`)
+                dom = parse(rootHtml);
             }
-            const cards = dom.querySelectorAll(selectors.card)
-
+            let cards = []
+            cards = dom.querySelectorAll(selectors.card)
             const data = []
 
             for (let i = 0; i < cards.length; i++) {
@@ -284,19 +301,11 @@ module.exports = {
             console.log('Flatting data')
             retArray = [...retArray, ...data]
             // this checks if it has to save the accumulated data, if so, cleans the array
-            if (this._hasToSave(pageNumber, groupingPages) || pageNumber === pages) {
-                try {
-                    await dataUtils.log(scrapingId, `Creating file for page: ${pageNumber}`)
-                    await dataUtils.createRealScrapFile(scrapingId, pageNumber, retArray)
-                    await dataUtils.log(scrapingId, `Persisting page: ${pageNumber}`)
-                    await dataUtils.persistFile(retArray, scrapingId)
-                } catch (e) {
-                    throw e
-                }
-                retArray = []
-                saved = true
-            }
+            await dataUtils.saveData(scrapingId, pageNumber, retArray, persist)
+            retArray = []
+            saved = true
         }
+        this.finishScraping(scrapingId)
         if (pages === 0) {
             console.log('Scraper finished without results')
         }
@@ -386,7 +395,7 @@ module.exports = {
 
         await dataUtils.createGenericFile('province-data', values)
         await browser.close();
-    }   ,
+    },
     // this scrapper gets all the neighborhoods that are defined in la voz del interior
     neighborhoodScrap: async function (inputSelector, inputText) {
         const browser = await puppeteer.launch();
