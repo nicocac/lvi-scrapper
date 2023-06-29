@@ -66,9 +66,9 @@ module.exports = {
     },
     updateCurrentPage: function (currentPage, scrapingId) {
         const sql = `update scraping
-                     set current_page = ?
-                     where name = ?`;
-        return this.makeQuery(sql, currentPage, scrapingId)
+                     set current_page = ${currentPage}
+                     where name = '${scrapingId}'`;
+        return this.makeQuery(sql)
     },
     finishScraping: function (scrapingId) {
         const sql = `update scraping
@@ -181,28 +181,30 @@ module.exports = {
     },
     processDuplicated: async function () {
         const sql = `select link, count(1)
-                       from item
-                      group by link
+                     from item
+                     group by link
                      having count(1) > 1`;
         const results = await this.makeQuery(sql);
-        for(const result of results) {
-            const { link } = result;
-            const query = `select id 
-                             from item 
-                            where link = '${link}'
-                              and id > (select min(id) 
-                                          from item 
-                                         where link = '${link}'
-                                           and deleted_at is null)
-                              and deleted_at is null`;
+        for (const result of results) {
+            const {link} = result;
+            const query = `select id
+                           from item
+                           where link = '${link}'
+                             and id > (select min(id)
+                                       from item
+                                       where link = '${link}'
+                                         and deleted_at is null)
+                             and deleted_at is null`;
             const toDelete = await this.makeQuery(query);
-            const updateAll = `update item set deleted_at = now() where id in (?)`;
+            const updateAll = `update item
+                               set deleted_at = now()
+                               where id in (?)`;
             await this.makeQuery(updateAll, [toDelete.map(d => d.id)])
         }
     },
     persistFile: async function (fileData, scrapingId) {
         let items = []
-        for(let item of fileData) {
+        for (let item of fileData) {
             const dataToAnalyze = await utils.removeAccents(item.title.concat(item.features).toLowerCase())
             items.push({
                 ...item,
@@ -216,9 +218,7 @@ module.exports = {
                                     where link = ?`;
             const result = await this.makeQuery(sqlQueryExists, item.link)
             const itemId = result?.[0]?.id
-            if (itemId) {
-                await this.persistItem(item, itemId, scrapingId)
-            }
+            await this.persistItem(item, itemId, scrapingId)
         }
 
     },
@@ -320,25 +320,6 @@ module.exports = {
     persistItem: async function (item, itemId, scrapingId) {
         !itemId && await this.saveNewItem(item, scrapingId);
         itemId && await this.updateItem(item, itemId, scrapingId);
-    },
-    persist: async function (dir) {
-        const connection = await this.getConnection()
-        const files = await this.getFiles(dir)
-        const items = await this.completeData(files)
-        await connection.connect(async function (err) {
-            if (err) throw err;
-            for (let item of items) {
-                let itemId
-                const sqlQueryExists = `select id
-                                        from item
-                                        where link = '${item.link}'`;
-                await connection.query(sqlQueryExists, async function (err, result) {
-                    if (err) throw err;
-                    itemId = result?.[0]?.id
-                    await this.persistItem(item, itemId)
-                });
-            }
-        })
     },
     analyzeData: async function (description) {
         const frenteNorte = KEY_MAPPERS['frente']['norte'].some(key => description.indexOf(key) !== -1)
