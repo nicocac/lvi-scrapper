@@ -256,20 +256,24 @@ module.exports = {
                 }
                 console.log(`${i} - Processing link: ${link}`)
                 const detailDom = parse(detailHtml);
-                const featureDescription = await this._getFeatureDescription(detailDom, 'p')
-                const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
-                const analyzedData = await dataUtils.analyzeData(completeData)
-                pageData.push({
-                    link,
-                    title,
-                    // TODO check this data
-                    finished: (await this._isFinished(detailDom)),
-                    meters: mts?.split('\n')?.[0],
-                    price,
-                    announcer: (await this._getAnnouncerType(detailDom)),
-                    ...featureDescription,
-                    ...analyzedData
-                })
+                const isFinished = await this._isFinished(detailDom)
+                isFinished && await dataUtils.finalizeItem(link, scrapingId)
+                if(!isFinished) {
+                    const featureDescription = await this._getFeatureDescription(detailDom, 'p')
+                    const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
+                    const analyzedData = await dataUtils.analyzeData(completeData)
+                    pageData.push({
+                        link,
+                        title,
+                        // TODO check this data
+                        finished: (await this._isFinished(detailDom)),
+                        meters: mts?.split('\n')?.[0],
+                        price,
+                        announcer: (await this._getAnnouncerType(detailDom)),
+                        ...featureDescription,
+                        ...analyzedData
+                    })
+                }
             }
             console.log('Flatting data')
             retArray = [...retArray, ...pageData]
@@ -319,8 +323,8 @@ module.exports = {
     },
     _getFeatureDescription: async function (document, selector) {
         const asArray = Array.from(document.querySelectorAll(selector))
-        const [, ...features] = asArray?.find(e => e.textContent === "Características").closest('div')?.childNodes
-        const [, ...otherFeatures] = asArray?.find(e => e.textContent === "Otras características").closest('div')?.childNodes
+        const [, ...features] = asArray?.find(e => e.textContent === "Características")?.closest('div')?.childNodes
+        const [, ...otherFeatures] = asArray?.find(e => e.textContent === "Otras características")?.closest('div')?.childNodes
         const description = asArray?.find(paragraph => paragraph.textContent === 'Descripción')?.closest('div').textContent
         const result = {
             features: [...features, ...otherFeatures]

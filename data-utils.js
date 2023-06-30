@@ -317,6 +317,13 @@ module.exports = {
                      WHERE id = ${id}`
         return await this.makeQuery(sql, [itemValues])
     },
+    finalizeItem: async function (link, scrapingId) {
+        const sql = `UPDATE item
+                     SET end = now(),
+                         last_status_process = ?
+                     WHERE link = ${link}`
+        return await this.makeQuery(sql, scrapingId)
+    },
     persistItem: async function (item, itemId, scrapingId) {
         !itemId && await this.saveNewItem(item, scrapingId);
         itemId && await this.updateItem(item, itemId, scrapingId);
