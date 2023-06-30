@@ -276,7 +276,7 @@ module.exports = {
         const sql = `INSERT INTO item (site, link, title, meters, priceType, price, announcer, features, description,
                                        province, city, neighborhood, front, back, green_space, duplex, possession, deed,
                                        central, peripheral, financed, owner, payment_facilities, credit, accuracy,
-                                       status, last_status_date)
+                                       status, last_status_date, last_status_process)
                      values (?)`;
         const result = await this.makeQuery(sql, [this.getItemValues(inputItem, scrapingId, 'new')])
         const itemId = result.insertId;

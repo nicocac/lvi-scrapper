@@ -217,8 +217,12 @@ module.exports = {
         const scrapingId = await dataUtils.getFolderName(id)
         let pageNumber = await dataUtils.recapPageNum(scrapingId);
         // recap saved data from the last scraping
-        const lastData = require(`./scraping-src/${scrapingId}/data.json`)
-
+        let lastData
+        try {
+            lastData = require(`./scraping-src/${scrapingId}/data.json`)
+        } catch (e) {
+            lastData = []
+        }
         // save new scraping process
         pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
         let retArray = lastData ?? []
