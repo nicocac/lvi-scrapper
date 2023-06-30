@@ -222,13 +222,13 @@ module.exports = {
         }
 
     },
-    saveData: async function (scrapingId, pageNumber, retArray, persist) {
+    saveData: async function (scrapingId, pageNumber, flatArray, pageData, persist) {
         try {
             await this.log(scrapingId, `Creating file for page: ${pageNumber}`)
-            await this.createRealScrapFile(scrapingId, pageNumber, retArray)
+            await this.createRealScrapFile(scrapingId, pageNumber, flatArray)
             if (persist) {
                 await this.log(scrapingId, `Persisting page: ${pageNumber}`)
-                await this.persistFile(retArray, scrapingId)
+                await this.persistFile(pageData, scrapingId)
             }
             await this.updateCurrentPage(pageNumber, scrapingId)
         } catch (e) {

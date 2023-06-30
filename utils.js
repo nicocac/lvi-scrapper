@@ -2,7 +2,8 @@ const { ZenRows } = require("zenrows");
 
 module.exports = {
     getAccuracy: function (item, location) {
-        const neighborhoodKeys = location.split(' ').filter(k => k !== 'de')
+        if(!location) return 0;
+        const neighborhoodKeys = location?.split(' ').filter(k => k !== 'de')
         const mainTitleOccurrences = neighborhoodKeys.map(key =>
             item.title?.toUpperCase()
                 ?.indexOf(key.toUpperCase()) !== -1)

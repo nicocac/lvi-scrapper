@@ -3,44 +3,6 @@ const utils = require("./utils");
 const dataUtils = require("./data-utils");
 const {parse} = require('node-html-parser')
 module.exports = {
-    createHeadlessPage: async function (browser) {
-        const page = await browser.newPage();
-
-        // Configure request interception to block certain file types and URLs
-        await page.setRequestInterception(true);
-        page.on('request', (interceptedRequest) => {
-            const url = interceptedRequest.url();
-            const resourceType = interceptedRequest.resourceType();
-
-            // Block requests for assets (images, stylesheets, scripts, etc.) and external URLs
-            if (
-                resourceType === 'image' ||
-                resourceType === 'stylesheet' ||
-                resourceType === 'font' ||
-                url.indexOf('google') !== -1 || // Specify the protocol (http or https) accordingly
-                url.indexOf('tagmanager') !== -1 ||
-                url.indexOf('awesome') !== -1 ||
-                url.indexOf('youtube') !== -1 ||
-                url.indexOf('video') !== -1 ||
-                url.indexOf('sidebar-') !== -1 ||
-                url.indexOf('accordion-') !== -1 ||
-                url.indexOf('carousel') !== -1 ||
-                url.indexOf('gallery') !== -1 ||
-                url.indexOf('analytic') !== -1 ||
-                url.indexOf('ad-') !== -1 ||
-                url.indexOf('gstatic') !== -1 ||
-                url.indexOf('unpkg') !== -1 ||
-                url.indexOf('googleapis') !== -1 ||
-                url.indexOf('facebook') !== -1
-            ) {
-                interceptedRequest.abort();
-            } else {
-                interceptedRequest.continue();
-            }
-        });
-
-        return page;
-    },
     realScrap: async function (url, id, groupingPages, persist = true, test = false) {
         const proxyChain = require('proxy-chain');
 
@@ -216,6 +178,13 @@ module.exports = {
         await browser.close();
         await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
     },
+    _getPages: function (pageArray) {
+        return pageArray
+            ? (pageArray.length < 11
+                ? pageArray.length
+                : parseInt(pageArray[pageArray.length - 1].textContent))
+            : 1
+    },
     realScrapApi: async function (url, id, persist = true, test = false) {
         let saved = false
         let rootHtml
@@ -242,17 +211,17 @@ module.exports = {
 
         let dom = parse(rootHtml);
         const pageArray = Array.from(dom.querySelectorAll(selectors.pages))
-        let pages = pageArray
-            ? (pageArray.length < 11
-                ? pageArray.length
-                : parseInt(pageArray[pageArray.length - 1].textContent))
-            : 1
+        // gets the page quantity from the first page
+        let pages = this._getPages(pageArray)
+        // gets the folder name related with the last non finalized scraping or a new one
         const scrapingId = await dataUtils.getFolderName(id)
         let pageNumber = await dataUtils.recapPageNum(scrapingId);
+        // recap saved data from the last scraping
+        const lastData = require(`./scraping-src/${scrapingId}/data.json`)
 
         // save new scraping process
         pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
-        let retArray = []
+        let retArray = lastData ?? []
         for (pageNumber; pageNumber <= pages; pageNumber++) {
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}?page=${pageNumber}`)
             if (pageNumber > 1) {
@@ -261,7 +230,7 @@ module.exports = {
             }
             let cards = []
             cards = dom.querySelectorAll(selectors.card)
-            const data = []
+            const pageData = []
 
             for (let i = 0; i < cards.length; i++) {
                 const element = cards[i]
@@ -286,7 +255,7 @@ module.exports = {
                 const featureDescription = await this._getFeatureDescription(detailDom, 'p')
                 const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
                 const analyzedData = await dataUtils.analyzeData(completeData)
-                data.push({
+                pageData.push({
                     link,
                     title,
                     // TODO check this data
@@ -299,9 +268,9 @@ module.exports = {
                 })
             }
             console.log('Flatting data')
-            retArray = [...retArray, ...data]
+            retArray = [...retArray, ...pageData]
             // this checks if it has to save the accumulated data, if so, cleans the array
-            await dataUtils.saveData(scrapingId, pageNumber, retArray, persist)
+            await dataUtils.saveData(scrapingId, pageNumber, retArray, pageData, persist)
             retArray = []
             saved = true
         }
