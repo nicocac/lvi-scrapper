@@ -186,58 +186,63 @@ module.exports = {
             : 1
     },
     realScrapApi: async function (url, id, persist = true, test = false) {
+        let saved = false
+        let rootHtml
         try {
-            let saved = false
-            let rootHtml
-            try {
-                if (test) {
-                    rootHtml = await dataUtils.getGenericData('./generic-data/scrappingApi')
-                }
-            } catch (e) {
+            if (test) {
+                rootHtml = await dataUtils.getGenericData('./generic-data/scrappingApi')
             }
+        } catch (e) {
+        }
 
-            if (!rootHtml) {
-                rootHtml = await dataUtils.getHtmlText(url)
-                test && await dataUtils.createGenericFile('scrappingApi', html, 'text')
-            }
+        if (!rootHtml) {
+            rootHtml = await dataUtils.getHtmlText(url)
+            test && await dataUtils.createGenericFile('scrappingApi', html, 'text')
+        }
 
-            const selectors = {
-                pages: 'nav ul li',
-                card: 'div.content-start > div',
-                link: 'a',
-                title: 'a h2',
-                mts: 'a .card-body > div:nth-last-child(2)',
-                price: 'a .card-body > div:last-child'
-            }
+        const selectors = {
+            pages: 'nav ul li',
+            card: 'div.content-start > div',
+            link: 'a',
+            title: 'a h2',
+            mts: 'a .card-body > div:nth-last-child(2)',
+            price: 'a .card-body > div:last-child'
+        }
 
-            let dom = parse(rootHtml);
-            const pageArray = Array.from(dom.querySelectorAll(selectors.pages))
-            // gets the page quantity from the first page
-            let pages = this._getPages(pageArray)
-            // gets the folder name related with the last non finalized scraping or a new one
-            const scrapingId = await dataUtils.getFolderName(id)
-            let pageNumber = await dataUtils.recapPageNum(scrapingId);
-            // recap saved data from the last scraping
-            let lastData
-            try {
-                lastData = require(`./scraping-src/${scrapingId}/data.json`)
-            } catch (e) {
-                lastData = []
-            }
-            // save new scraping process
-            pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
-            let retArray = lastData ?? []
-            for (pageNumber; pageNumber <= pages; pageNumber++) {
-                console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}?page=${pageNumber}`)
-                if (pageNumber > 1) {
+        let dom = parse(rootHtml);
+        const pageArray = Array.from(dom.querySelectorAll(selectors.pages))
+        // gets the page quantity from the first page
+        let pages = this._getPages(pageArray)
+        // gets the folder name related with the last non finalized scraping or a new one
+        const scrapingId = await dataUtils.getFolderName(id)
+        let pageNumber = await dataUtils.recapPageNum(scrapingId);
+        // recap saved data from the last scraping
+        let lastData
+        try {
+            lastData = require(`./scraping-src/${scrapingId}/data.json`)
+        } catch (e) {
+            lastData = []
+        }
+        // save new scraping process
+        pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
+        let retArray = lastData ?? []
+        let errorLinks = []
+        for (pageNumber; pageNumber <= pages; pageNumber++) {
+            console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}?page=${pageNumber}`)
+            if (pageNumber > 1) {
+                try {
                     rootHtml = await dataUtils.getHtmlText(`${url}?page=${pageNumber}`)
                     dom = parse(rootHtml);
-                }
-                let cards = []
-                cards = dom.querySelectorAll(selectors.card)
-                const pageData = []
+                } catch (e) {
 
-                for (let i = 0; i < cards.length; i++) {
+                }
+            }
+            let cards = []
+            cards = dom.querySelectorAll(selectors.card)
+            const pageData = []
+
+            for (let i = 0; i < cards.length; i++) {
+                try {
                     const element = cards[i]
                     let detailHtml = ''
                     const mts = element.querySelector(selectors.mts).textContent
@@ -259,7 +264,7 @@ module.exports = {
                     const detailDom = parse(detailHtml);
                     const isFinished = await this._isFinished(detailDom)
                     isFinished && await dataUtils.finalizeItem(link, scrapingId)
-                    if(!isFinished) {
+                    if (!isFinished) {
                         const featureDescription = await this._getFeatureDescription(detailDom, 'p')
                         const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
                         const analyzedData = await dataUtils.analyzeData(completeData)
@@ -275,20 +280,21 @@ module.exports = {
                             ...analyzedData
                         })
                     }
+                } catch (e) {
+                    errorLinks.push(cards[i].link)
+                    dataUtils.saveLogFile()
                 }
-                console.log('Flatting data')
-                retArray = [...retArray, ...pageData]
-                // this checks if it has to save the accumulated data, if so, cleans the array
-                await dataUtils.saveData(scrapingId, pageNumber, retArray, pageData, persist)
-                retArray = []
-                saved = true
             }
-            this.finishScraping(scrapingId)
-            if (pages === 0) {
-                console.log('Scraper finished without results')
-            }
-        } catch (e) {
-            dataUtils.saveLogFile(item.link)
+            console.log('Flatting data')
+            retArray = [...retArray, ...pageData]
+            // this checks if it has to save the accumulated data, if so, cleans the array
+            await dataUtils.saveData(scrapingId, pageNumber, retArray, pageData, persist)
+            retArray = []
+            saved = true
+        }
+        await this.finishScraping(scrapingId, errorLinks)
+        if (pages === 0) {
+            console.log('Scraper finished without results')
         }
     },
     _getAnnouncerType: async function (document) {

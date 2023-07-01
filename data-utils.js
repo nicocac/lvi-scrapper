@@ -71,7 +71,8 @@ module.exports = {
                      where name = '${scrapingId}'`;
         return this.makeQuery(sql)
     },
-    finishScraping: function (scrapingId) {
+    finishScraping: async function (scrapingId, errorLinks) {
+        await this.createGenericFile('error-links', errorLinks)
         const sql = `update scraping
                      set end = now()
                      where name = ?`;
@@ -359,7 +360,7 @@ module.exports = {
         return `./scraping-src/${scrappingId}`
     },
     getHtmlText: async function (url, params = {}, useProxy = true) {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             setTimeout(async () => {
                 let html
                 const headers =
@@ -385,10 +386,7 @@ module.exports = {
                             "proxy_country": "ar"
                         }, headers);
                     } catch (error) {
-                        console.error(error.message);
-                        if (error.response) {
-                            console.error(error.response.data);
-                        }
+                        reject(error.message);
                     }
                 } else {
                     html = await fetch(url, headers).catch(error => {
@@ -399,7 +397,7 @@ module.exports = {
                 try {
                     resolve(html.data)
                 } catch (e) {
-                    this.saveLogFile('Error getting data from api: ' + e.message)
+                    reject(e.message)
                 }
             }, Math.random() * 2000)
         })
