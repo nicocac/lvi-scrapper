@@ -14,5 +14,5 @@ const dataUtils = require('./data-utils');
      //await dataUtils.persist('./scrapping-src/la-voz-try-8062023', null)
      // await dataUtils.processDuplicated()
      // console.log(await dataUtils.saveNewScraping('la-voz-1'))
-     console.timeEnd("Scrapper");
+      console.timeEnd("Scrapper");
 })();
