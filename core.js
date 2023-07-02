@@ -282,7 +282,6 @@ module.exports = {
                     }
                 } catch (e) {
                     errorLinks.push(cards[i].link)
-                    dataUtils.saveLogFile()
                 }
             }
             console.log('Flatting data')
@@ -292,7 +291,7 @@ module.exports = {
             retArray = []
             saved = true
         }
-        await this.finishScraping(scrapingId, errorLinks)
+        await dataUtils.finishScraping(scrapingId, errorLinks)
         if (pages === 0) {
             console.log('Scraper finished without results')
         }
