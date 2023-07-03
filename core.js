@@ -187,18 +187,11 @@ module.exports = {
     },
     realScrapApi: async function (url, id, persist = true, test = false) {
         let saved = false
-        let rootHtml
-        try {
-            if (test) {
-                rootHtml = await dataUtils.getGenericData('./generic-data/scrappingApi')
-            }
-        } catch (e) {
-        }
+        let dom
 
-        if (!rootHtml) {
-            rootHtml = await dataUtils.getHtmlText(url)
-            test && await dataUtils.createGenericFile('scrappingApi', html, 'text')
-        }
+        dom = test
+            ? await this._getHtmlDom('./generic-data/scrappingApi', true)
+            : await this._getHtmlDom(url)
 
         const selectors = {
             pages: 'nav ul li',
@@ -209,7 +202,6 @@ module.exports = {
             price: 'a .card-body > div:last-child'
         }
 
-        let dom = parse(rootHtml);
         const pageArray = Array.from(dom.querySelectorAll(selectors.pages))
         // gets the page quantity from the first page
         let pages = this._getPages(pageArray)
@@ -230,12 +222,7 @@ module.exports = {
         for (pageNumber; pageNumber <= pages; pageNumber++) {
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}?page=${pageNumber}`)
             if (pageNumber > 1) {
-                try {
-                    rootHtml = await dataUtils.getHtmlText(`${url}?page=${pageNumber}`)
-                    dom = parse(rootHtml);
-                } catch (e) {
-
-                }
+                dom = await this._getHtmlDom(`${url}?page=${pageNumber}`)
             }
             let cards = []
             cards = dom.querySelectorAll(selectors.card)
@@ -243,43 +230,8 @@ module.exports = {
 
             for (let i = 0; i < cards.length; i++) {
                 try {
-                    const element = cards[i]
-                    let detailHtml = ''
-                    const mts = element.querySelector(selectors.mts).textContent
-                    const title = element.querySelector(selectors.title).textContent
-                    const price = await dataUtils.getPrice(element.querySelector(selectors.price).textContent)
-                    const link = element.querySelector(selectors.link).getAttribute('href')
-                    try {
-                        if (test) {
-                            detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
-                        }
-                    } catch (e) {
-                    }
-
-                    if (!detailHtml) {
-                        detailHtml = await dataUtils.getHtmlText(link)
-                        test && await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
-                    }
-                    console.log(`${i} - Processing link: ${link}`)
-                    const detailDom = parse(detailHtml);
-                    const isFinished = await this._isFinished(detailDom)
-                    isFinished && await dataUtils.finalizeItem(link, scrapingId)
-                    if (!isFinished) {
-                        const featureDescription = await this._getFeatureDescription(detailDom, 'p')
-                        const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
-                        const analyzedData = await dataUtils.analyzeData(completeData)
-                        pageData.push({
-                            link,
-                            title,
-                            // TODO check this data
-                            finished: (await this._isFinished(detailDom)),
-                            meters: mts?.split('\n')?.[0],
-                            price,
-                            announcer: (await this._getAnnouncerType(detailDom)),
-                            ...featureDescription,
-                            ...analyzedData
-                        })
-                    }
+                    const itemData = this._getItemData(cards[i], i, test)
+                    pageData.push(itemData)
                 } catch (e) {
                     errorLinks.push(cards[i].link)
                 }
@@ -295,6 +247,59 @@ module.exports = {
         if (pages === 0) {
             console.log('Scraper finished without results')
         }
+    },
+    async _getHtmlDom(url, test = false) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const html = test
+                    ? await dataUtils.getGenericData(url)
+                    : await dataUtils.getHtmlText(url)
+                resolve(parse(html));
+            } catch (e) {
+                reject(e.message)
+            }
+        })
+    },
+    async _getItemData(scrapingId, element, i, selectors, test = false) {
+        return new Promise(async (resolve, reject) => {
+            let detailHtml = ''
+            const mts = element.querySelector(selectors.mts).textContent
+            const title = element.querySelector(selectors.title).textContent
+            const price = await dataUtils.getPrice(element.querySelector(selectors.price).textContent)
+            const link = element.querySelector(selectors.link).getAttribute('href')
+            try {
+                if (test) {
+                    detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
+                }
+            } catch (e) {
+                reject(e.message)
+            }
+
+            if (!detailHtml) {
+                detailHtml = await dataUtils.getHtmlText(link)
+                test && await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
+            }
+            console.log(`${i} - Processing link: ${link}`)
+            const detailDom = parse(detailHtml);
+            const isFinished = await this._isFinished(detailDom)
+            isFinished && await dataUtils.finalizeItem(link, scrapingId)
+            if (!isFinished) {
+                const featureDescription = await this._getFeatureDescription(detailDom, 'p')
+                const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
+                const analyzedData = await dataUtils.analyzeData(completeData)
+                resolve({
+                    link,
+                    title,
+                    // TODO check this data
+                    finished: (await this._isFinished(detailDom)),
+                    meters: mts?.split('\n')?.[0],
+                    price,
+                    announcer: (await this._getAnnouncerType(detailDom)),
+                    ...featureDescription,
+                    ...analyzedData
+                })
+            }
+        })
     },
     _getAnnouncerType: async function (document) {
         const element = await document.querySelector('.clearfix .container.px2 div.h5.gray')
