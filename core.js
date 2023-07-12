@@ -325,7 +325,7 @@ module.exports = {
             cards = dom.querySelectorAll(selectors.card)
             const pageData = []
 
-            for (let i = 0; i < 2; i++) {
+            for (let i = 0; i < cards.length; i++) {
                 try {
                     const itemData = await this._getItemData(scrapingId, cards[i], i, selectors, test)
                     pageData.push(itemData)
