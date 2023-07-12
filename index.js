@@ -6,6 +6,7 @@ const dataUtils = require('./data-utils');
      console.time("Scrapper");
      // await core.locationScrap('cordoba')
      await core.realScrapApi('https://clasificados.lavoz.com.ar/inmuebles/terrenos-y-lotes/venta', 'la-voz', true, false)
+     // await core.realScrapApi('https://clasificados.lavoz.com.ar/inmuebles/casas', 'la-voz-casas', true, false)
      // await core.fsWriteTry('la-voz-try', 1, [{id: 1, message: 'Prueba nico'}])
      // await core.neighborhoodScrap('#input-ubicacion','cordoba')
      // console.table(await utils.findWordsByProximity('terreno de 360 m2 en frente norte', 'f norte', 5))

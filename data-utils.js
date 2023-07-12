@@ -1,6 +1,6 @@
 const mysql = require('mysql');
 const utils = require('./utils');
-const { ZenRows } = require("zenrows");
+const {ZenRows} = require("zenrows");
 const fs = require("fs");
 const KEY_MAPPERS = require('./generic-data/key-mappers.json')
 const path = require("path");
@@ -115,14 +115,28 @@ module.exports = {
                 })
         )
         const mappedCity = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('ciudad') !== -1))
-        const mappedWithoutCity = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('ciudad') === -1))
-        const processed = [...mappedCity.map((f, i) => {
-                const key = Object.keys(f)[0]
-                return i > 0
-                    ? {ficha_barrio: f[key]}
-                    : f
-            }
-        ), ...mappedWithoutCity]
+        const mappedMeters = mappedFeatureTypes.filter(f => Object.keys(f).find(k => k.indexOf('superficie') !== -1))
+        const mappedWithoutCityAndMeters = mappedFeatureTypes.filter(f =>
+            Object.keys(f).find(k => k.indexOf('ciudad') === -1
+                && k.indexOf('superficie') === -1)
+        )
+        const processed = [
+            ...mappedCity.map((f, i) => {
+                    const key = Object.keys(f)[0]
+                    return i > 0
+                        ? {ficha_barrio: f[key]}
+                        : f
+                }),
+            ...mappedMeters
+                .sort((f1, f2) => f1[Object.keys(f1)[0]] < f2[Object.keys(f2)[0]])
+                .map((f, i) => {
+                    const key = Object.keys(f)[0]
+                    return i === 0
+                        ? {ficha_superficie_cubierta: f[key]}
+                        : f
+            }),
+            ...mappedWithoutCityAndMeters
+        ]
         return processed.reduce((previous, current) => {
             return {
                 ...previous,
@@ -169,13 +183,13 @@ module.exports = {
     makeQuery: async function (query, ...params) {
         return new Promise(async resolve => {
             const connection = require('./connection.js');
-                connection.query(query, ...params, (error, result) => {
-                    if (error) {
-                        resolve({error});
-                        return;
-                    }
-                    resolve(result);
-                })
+            connection.query(query, ...params, (error, result) => {
+                if (error) {
+                    resolve({error});
+                    return;
+                }
+                resolve(result);
+            })
         })
     },
     processDuplicated: async function () {
@@ -223,8 +237,8 @@ module.exports = {
     },
     saveData: async function (scrapingId, pageNumber, flatArray, pageData, persist) {
         try {
-            await this.log(scrapingId, `Creating file for page: ${pageNumber}`)
-            await this.createRealScrapFile(scrapingId, pageNumber, flatArray)
+            // await this.log(scrapingId, `Creating file for page: ${pageNumber}`)
+            // await this.createRealScrapFile(scrapingId, pageNumber, flatArray)
             if (persist) {
                 await this.log(scrapingId, `Persisting page: ${pageNumber}`)
                 await this.persistFile(pageData, scrapingId)
@@ -243,6 +257,8 @@ module.exports = {
         const values = []
         values.push('la voz')
         values.push(inputItem.link)
+        values.push(inputItem.housingType || 'Lote')
+        values.push(inputItem.condition)
         values.push(inputItem.title)
         values.push(inputItem.meters)
         values.push(inputItem.price.type)
@@ -272,7 +288,7 @@ module.exports = {
         return values
     },
     saveNewItem: async function (inputItem, scrapingId) {
-        const sql = `INSERT INTO item (site, link, title, meters, priceType, price, announcer, features, description,
+        const sql = `INSERT INTO item (site, link, type, operation, title, meters, price_type, price, announcer, features, description,
                                        province, city, neighborhood, front, back, green_space, duplex, possession, deed,
                                        central, peripheral, financed, owner, payment_facilities, credit, accuracy,
                                        status, last_status_date, last_status_process)
@@ -285,11 +301,13 @@ module.exports = {
         }
     },
     updateItem: async function (inputItem, id, scrapingId) {
-        const {site, ...itemValues} = this.getItemValues(inputItem, scrapingId, 'updated')
+        const [site, link, ...itemValues] = this.getItemValues(inputItem, scrapingId, 'updated')
         const sql = `UPDATE item
-                     SET title=?,
+                     SET type=?,
+                         operation=?,
+                         title=?,
                          meters=?,
-                         priceType=?,
+                         price_type=?,
                          price=?,
                          announcer=?,
                          features=?,
@@ -314,11 +332,11 @@ module.exports = {
                          last_status_date=?,
                          last_status_process=?
                      WHERE id = ${id}`
-        return await this.makeQuery(sql, [itemValues])
+        return await this.makeQuery(sql, itemValues)
     },
     finalizeItem: async function (link, scrapingId) {
         const sql = `UPDATE item
-                     SET end = now(),
+                     SET end                 = now(),
                          last_status_process = ?
                      WHERE link = ${link}`
         return await this.makeQuery(sql, scrapingId)
@@ -422,7 +440,7 @@ module.exports = {
             console.log('File was created successfully.');
         })
     },
-    saveLogFile (message) {
+    saveLogFile(message) {
         return fs.writeFile('./log.json', Math.random.toString(), function (err) {
             if (err) {
                 console.log(`Error creating file log.json: ${JSON.stringify(err)}`);

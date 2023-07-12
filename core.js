@@ -178,6 +178,103 @@ module.exports = {
         await browser.close();
         await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
     },
+    _getAnnouncerType: async function (document) {
+        const element = await document.querySelector('.clearfix .container.px2 div.h5.gray')
+        return element?.textContent || 'no data'
+    },
+    _getFeatureDescription: async function (document, selector) {
+        const asArray = Array.from(document.querySelectorAll(selector))
+        const [, ...features] = asArray?.find(e => e.textContent === "Características")?.closest('div')?.childNodes
+        const [, ...otherFeatures] = asArray?.find(e => e.textContent === "Otras características")?.closest('div')?.childNodes
+        const description = asArray?.find(paragraph => paragraph.textContent === 'Descripción')?.closest('div').textContent
+        const result = {
+            features: [...features, ...otherFeatures]
+                ?.map(feature => feature.textContent?.replace('\\n', '').trim())
+                ?.join(','),
+            description
+        }
+        return result
+    },
+    async _getHtmlDom(url, test = false) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const html = test
+                    ? await dataUtils.getGenericData(url)
+                    : await dataUtils.getHtmlText(url)
+                resolve(parse(html));
+            } catch (e) {
+                reject(e.message)
+            }
+        })
+    },
+    async _getItemData(scrapingId, element, i, selectors, test = false) {
+        return new Promise(async (resolve, reject) => {
+            let detailHtml = ''
+            const mts = element.querySelector(selectors.mts).textContent
+            const meters = mts.substring(mts.indexOf('superficie'), mts.indexOf('m2')).split('superficie')[1].trim()
+            const title = element.querySelector(selectors.title).textContent
+            const price = await dataUtils.getPrice(element.querySelector(selectors.price).textContent)
+            const link = element.querySelector(selectors.link).getAttribute('href')
+            try {
+                if (test) {
+                    detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
+                }
+            } catch (e) {
+                reject(e.message)
+            }
+
+            if (!detailHtml) {
+                detailHtml = await dataUtils.getHtmlText(link)
+                test && await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
+            }
+            console.log(`${i} - Processing link: ${link}`)
+            const detailDom = parse(detailHtml);
+            const isFinished = await this._isFinished(detailDom)
+            isFinished && await dataUtils.finalizeItem(link, scrapingId)
+            if (!isFinished) {
+                const featureDescription = await this._getFeatureDescription(detailDom, 'p')
+                const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
+                const analyzedData = await dataUtils.analyzeData(completeData)
+                resolve({
+                    link,
+                    title,
+                    // TODO check this data
+                    finished: (await this._isFinished(detailDom)),
+                    meters,
+                    price,
+                    announcer: (await this._getAnnouncerType(detailDom)),
+                    ...featureDescription,
+                    ...analyzedData
+                })
+            }
+        })
+    },
+    _getLocationData: async function (document) {
+        let [city, neighborhood] = await this._getLocationDOMData(document, '_ciudad')
+        if (!neighborhood) {
+            neighborhood = JSON.parse(JSON.stringify(city))
+            city = undefined
+        }
+        const province = (await this._getLocationDOMData(document, '_provinicia'))?.[0] ?? ''
+        return {
+            neighborhood,
+            city,
+            province
+        }
+    },
+    _getLocationDOMData: async function (document, locationInput) {
+        const elements = document.querySelectorAll('.container.main-wrapper .bg-light-gray > div')
+        const mappedElements = elements
+            ?.map(e => {
+                return {
+                    text: e?.querySelector('div > div + div')?.textContent?.trim() || e?.querySelector('a')?.textContent?.trim(),
+                    label: e?.querySelector('title')?.textContent
+                }
+            })
+        const filteredElements = mappedElements?.filter(e => e?.label && e?.label?.indexOf(locationInput) !== -1)
+        return filteredElements?.map(e => e.text)
+
+    },
     _getPages: function (pageArray) {
         return pageArray
             ? (pageArray.length < 11
@@ -209,15 +306,15 @@ module.exports = {
         const scrapingId = await dataUtils.getFolderName(id)
         let pageNumber = await dataUtils.recapPageNum(scrapingId);
         // recap saved data from the last scraping
-        let lastData
+        /* let lastData
         try {
             lastData = require(`./scraping-src/${scrapingId}/data.json`)
         } catch (e) {
             lastData = []
-        }
+        } */
         // save new scraping process
         pageNumber === 1 && await dataUtils.saveNewScraping(scrapingId)
-        let retArray = lastData ?? []
+        let retArray = []
         let errorLinks = []
         for (pageNumber; pageNumber <= pages; pageNumber++) {
             console.log(`Processing page ${pageNumber} of ${pages} for url: ${url}?page=${pageNumber}`)
@@ -228,9 +325,9 @@ module.exports = {
             cards = dom.querySelectorAll(selectors.card)
             const pageData = []
 
-            for (let i = 0; i < cards.length; i++) {
+            for (let i = 0; i < 2; i++) {
                 try {
-                    const itemData = this._getItemData(cards[i], i, test)
+                    const itemData = await this._getItemData(scrapingId, cards[i], i, selectors, test)
                     pageData.push(itemData)
                 } catch (e) {
                     errorLinks.push(cards[i].link)
@@ -248,108 +345,9 @@ module.exports = {
             console.log('Scraper finished without results')
         }
     },
-    async _getHtmlDom(url, test = false) {
-        return new Promise(async (resolve, reject) => {
-            try {
-                const html = test
-                    ? await dataUtils.getGenericData(url)
-                    : await dataUtils.getHtmlText(url)
-                resolve(parse(html));
-            } catch (e) {
-                reject(e.message)
-            }
-        })
-    },
-    async _getItemData(scrapingId, element, i, selectors, test = false) {
-        return new Promise(async (resolve, reject) => {
-            let detailHtml = ''
-            const mts = element.querySelector(selectors.mts).textContent
-            const title = element.querySelector(selectors.title).textContent
-            const price = await dataUtils.getPrice(element.querySelector(selectors.price).textContent)
-            const link = element.querySelector(selectors.link).getAttribute('href')
-            try {
-                if (test) {
-                    detailHtml = await dataUtils.getGenericData('./generic-data/detailHtmlApi')
-                }
-            } catch (e) {
-                reject(e.message)
-            }
-
-            if (!detailHtml) {
-                detailHtml = await dataUtils.getHtmlText(link)
-                test && await dataUtils.createGenericFile('detailHtmlApi', detailHtml, 'text')
-            }
-            console.log(`${i} - Processing link: ${link}`)
-            const detailDom = parse(detailHtml);
-            const isFinished = await this._isFinished(detailDom)
-            isFinished && await dataUtils.finalizeItem(link, scrapingId)
-            if (!isFinished) {
-                const featureDescription = await this._getFeatureDescription(detailDom, 'p')
-                const completeData = await utils.removeAccents(title.concat(featureDescription.description).toLowerCase())
-                const analyzedData = await dataUtils.analyzeData(completeData)
-                resolve({
-                    link,
-                    title,
-                    // TODO check this data
-                    finished: (await this._isFinished(detailDom)),
-                    meters: mts?.split('\n')?.[0],
-                    price,
-                    announcer: (await this._getAnnouncerType(detailDom)),
-                    ...featureDescription,
-                    ...analyzedData
-                })
-            }
-        })
-    },
-    _getAnnouncerType: async function (document) {
-        const element = await document.querySelector('.clearfix .container.px2 div.h5.gray')
-        return element?.textContent || 'no data'
-    },
     _isFinished: async function (document) {
         const element = await document.querySelector('#camera .h2')
         return element?.textContent && element?.textContent?.toLowerCase()?.indexOf('finalizado') !== -1
-    },
-    _getLocationData: async function (document) {
-        let [city, neighborhood] = await this._getLocationDOMData(document, '_ciudad')
-        if (!neighborhood) {
-            neighborhood = JSON.parse(JSON.stringify(city))
-            city = undefined
-        }
-        const province = (await this._getLocationDOMData(document, '_provinicia'))?.[0] ?? ''
-        return {
-            neighborhood,
-            city,
-            province
-        }
-    },
-    _getLocationDOMData: async function (document, locationInput) {
-        const elements = document.querySelectorAll('.container.main-wrapper .bg-light-gray > div')
-        const mappedElements = elements
-            ?.map(e => {
-                return {
-                    text: e?.querySelector('div > div + div')?.textContent?.trim() || e?.querySelector('a')?.textContent?.trim(),
-                    label: e?.querySelector('title')?.textContent
-                }
-            })
-        const filteredElements = mappedElements?.filter(e => e?.label && e?.label?.indexOf(locationInput) !== -1)
-        return filteredElements?.map(e => e.text)
-
-    },
-    _getFeatureDescription: async function (document, selector) {
-        const asArray = Array.from(document.querySelectorAll(selector))
-        const [, ...features] = asArray?.find(e => e.textContent === "Características")?.closest('div')?.childNodes
-        const [, ...otherFeatures] = asArray?.find(e => e.textContent === "Otras características")?.closest('div')?.childNodes
-        const description = asArray?.find(paragraph => paragraph.textContent === 'Descripción')?.closest('div').textContent
-        const result = {
-            features: [...features, ...otherFeatures]
-                ?.map(feature => feature.textContent?.replace('\\n', '').trim())
-                ?.join(','),
-            description
-        }
-        return result
-    },
-    _hasToSave: function (page, groupingPages) {
-        return page % groupingPages === 0
     },
     // this scrapper gets all the locations by province that are registered in argentina.gob.ar
     locationScrap: async function (province) {
